@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2c170d"/>
+      <stop offset="50%" stop-color="#190e08"/>
+      <stop offset="100%" stop-color="#100804"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="40%" stop-color="#FFB300"/>
+      <stop offset="70%" stop-color="#FFA000"/>
+      <stop offset="100%" stop-color="#D4AF37"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+
+  <!-- Outer Ring -->
+  <circle cx="256" cy="256" r="220" fill="none" stroke="url(#gold)" stroke-width="8" stroke-dasharray="10 6"/>
+  <circle cx="256" cy="256" r="206" fill="none" stroke="url(#gold)" stroke-width="4"/>
+
+  <!-- Rosogolla / Sweet in Traditional Clay Bowl (Handi) Center Graphic -->
+  <!-- Handi / Bowl -->
+  <path d="M156 320 C156 390 356 390 356 320 L366 290 L146 290 Z" fill="url(#gold)" opacity="0.95"/>
+  <ellipse cx="256" cy="290" rx="110" ry="24" fill="#69391b" stroke="url(#gold)" stroke-width="5"/>
+
+  <!-- Rosogolla 1 (Left) -->
+  <circle cx="210" cy="260" r="42" fill="#fffaf0" stroke="url(#gold)" stroke-width="4"/>
+  <!-- Rosogolla 2 (Right) -->
+  <circle cx="302" cy="260" r="42" fill="#fffaf0" stroke="url(#gold)" stroke-width="4"/>
+  <!-- Rosogolla 3 (Center Top) -->
+  <circle cx="256" cy="220" r="48" fill="#ffffff" stroke="url(#gold)" stroke-width="5"/>
+
+  <!-- Saffron Strands & Pistachio on Center Rosogolla -->
+  <path d="M250 205 Q256 195 264 200" stroke="#ff3d00" stroke-width="3" fill="none"/>
+  <circle cx="256" cy="214" r="3.5" fill="#4caf50"/>
+
+  <!-- Royal Crown Top -->
+  <path d="M226 130 L256 95 L286 130 L310 115 L296 155 L216 155 L202 115 Z" fill="url(#gold)"/>
+  <circle cx="256" cy="90" r="6" fill="url(#gold)"/>
+  <circle cx="224" cy="126" r="4.5" fill="url(#gold)"/>
+  <circle cx="288" cy="126" r="4.5" fill="url(#gold)"/>
+
+  <!-- Stars -->
+  <polygon points="120,256 124,266 135,268 127,276 129,286 120,280 111,286 113,276 105,268 116,266" fill="url(#gold)"/>
+  <polygon points="392,256 396,266 407,268 399,276 401,286 392,280 383,286 385,276 377,268 388,266" fill="url(#gold)"/>
+
+  <!-- Bengali Typography: ঘোষ -->
+  <text x="256" y="440" font-family="'Anek Bangla', 'Tiro Bangla', sans-serif" font-size="46" font-weight="900" fill="url(#gold)" text-anchor="middle">ঘোষ সুইট হাউস</text>
+  <text x="256" y="475" font-family="serif" font-size="20" font-weight="700" letter-spacing="4" fill="#e6ca65" text-anchor="middle">KALIACHAK • MALDA</text>
+</svg>
