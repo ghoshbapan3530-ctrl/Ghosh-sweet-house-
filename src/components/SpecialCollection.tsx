@@ -21,12 +21,12 @@ export const SpecialCollection: React.FC = () => {
       badgeEn: 'Bengal Heritage'
     },
     {
-      titleBn: 'উৎসব ও পূজার রাজকীয় মিষ্টি',
-      titleEn: 'Sacred Festival & Puja Offerings',
-      descBn: 'দুর্গাপূজা, দীপাবলি, কালীপূজা ও নববর্ষে দেবীর ভোগ ও আত্মীয়দের জন্য নিখুঁত মিষ্টি।',
-      descEn: 'Sanctified offerings for Durga Puja, Diwali, and traditional Bengali festivities.',
-      badgeBn: 'পবিত্র ভোগ',
-      badgeEn: 'Pure & Holy'
+      titleBn: 'মালদার বিখ্যাত রসকদম্ব ও সন্দেশ',
+      titleEn: 'Malda Heritage Confections',
+      descBn: 'খাঁটি ছানা, খোয়া ক্ষীর ও পোস্তদানার আবরণে তৈরি প্রাচীন মালদার ঐতিহ্যবাহী সুস্বাদু মিষ্টান্ন।',
+      descEn: 'Legendary regional sweets of Malda crafted with rich artisanal chana, mawa, and poppy seeds.',
+      badgeBn: 'মালদার ঐতিহ্য',
+      badgeEn: 'Malda Legend'
     },
     {
       titleBn: 'খাঁটি মালাই ও ঘন ক্ষীরের পদ',

@@ -6,20 +6,33 @@ import {
   Minus,
   Trash2,
   ShoppingBag,
-  FileSpreadsheet,
-  RefreshCw,
+  Clock,
   Phone,
-  Sparkles,
   Check,
   ArrowRight,
-  Clock,
-  RotateCcw,
   Gift,
-  Coins,
   ShieldCheck,
-  User
+  MapPin,
+  FileText,
+  AlertCircle,
+  RefreshCw,
+  Printer,
+  Sparkles
 } from 'lucide-react';
 import { NutritionTooltip } from './NutritionTooltip';
+import { OrderTimestamp } from './OrderTimestamp';
+import {
+  createFirestoreOrder,
+  generateOrderId,
+  validateOrderPayload,
+  mapAndValidateFirestoreOrder,
+  DEFAULT_ORDER_STRUCTURE,
+  subscribeToOwnerSettings,
+  OwnerSettings,
+  DEFAULT_OWNER_SETTINGS,
+  FirebaseOrder
+} from '../lib/firestore-orders';
+import { syncOrderToServerSheets } from '../services/sheetsSyncService';
 
 export const CartModal: React.FC = () => {
   const {
@@ -36,760 +49,768 @@ export const CartModal: React.FC = () => {
     t,
     currentCustomer,
     openSignUpModal,
-    openLoginModal,
-    sweetPoints,
-    pointsToRupees,
-    calculateEarnablePoints,
-    isNewCustomerEligibleForDiscount,
-    calculateNewCustomerDiscount,
     addOrderToHistory,
-    setIsOrdersOpen,
-    setIsDashboardOpen
+    setTrackingOrderId
   } = useShop();
 
   const isDark = theme === 'dark';
 
+  // Checkout Form Fields
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [village, setVillage] = useState('');
+  const [area, setArea] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [landmark, setLandmark] = useState('');
+  const [customerNote, setCustomerNote] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'online'>('cod');
   const [orderType, setOrderType] = useState<'delivery' | 'takeaway'>('delivery');
-  const [specialNote, setSpecialNote] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi'>('cod');
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
 
-  // Loyalty points redemption state
-  const [isRedeemingPoints, setIsRedeemingPoints] = useState(false);
-  const [pointsInput, setPointsInput] = useState<number>(0);
-  const [orderSuccessId, setOrderSuccessId] = useState<string | null>(null);
-  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  // Owner operational settings (live from Firestore)
+  const [ownerSettings, setOwnerSettings] = useState<OwnerSettings>(DEFAULT_OWNER_SETTINGS);
 
-  // Auto-fill customer details if logged in
+  // Submission State
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [placedOrder, setPlacedOrder] = useState<FirebaseOrder | null>(null);
+
+  // Subscribe to live owner delivery settings
+  useEffect(() => {
+    const unsub = subscribeToOwnerSettings((st) => {
+      setOwnerSettings(st);
+    });
+    return () => unsub();
+  }, []);
+
+  // Autofill customer profile if logged in
   useEffect(() => {
     if (currentCustomer) {
-      if (!customerName) setCustomerName(currentCustomer.name);
-      if (!customerPhone) setCustomerPhone(currentCustomer.mobile);
+      if (!customerName) setCustomerName(currentCustomer.name || '');
+      if (!customerPhone) setCustomerPhone(currentCustomer.mobile || '');
     }
   }, [currentCustomer]);
 
   if (!isCartOpen) return null;
 
-  // New Customer 5% Discount
-  // 5% OFF on the first 5 qualifying orders (Minimum order value: ₹100)
-  const isEligibleForNewCustomerDiscount = isNewCustomerEligibleForDiscount(cartTotal);
-  const newCustomerDiscount = isEligibleForNewCustomerDiscount ? calculateNewCustomerDiscount(cartTotal) : 0;
-  const remainingBeforePoints = Math.max(0, cartTotal - newCustomerDiscount);
+  // 5% discount on spending above ₹100
+  const isEligibleForDiscount = cartTotal >= 100;
+  const discount5Percent = isEligibleForDiscount ? Number((cartTotal * 0.05).toFixed(2)) : 0;
 
-  // Sweet Points calculation: 1 Sweet Point = ₹0.50
-  // Max redeemable cannot exceed user points or remaining total
-  const maxPointsCoveringTotal = Math.floor(remainingBeforePoints / 0.5);
-  const maxRedeemablePoints = Math.min(sweetPoints, maxPointsCoveringTotal);
+  // Delivery charge calculation based on owner settings
+  const isFreeDelivery =
+    orderType === 'takeaway' ||
+    cartTotal >= (ownerSettings.freeDeliveryAbove || 500);
 
-  const effectivePointsRedeemed = isRedeemingPoints
-    ? Math.min(pointsInput || maxRedeemablePoints, maxRedeemablePoints)
-    : 0;
+  const deliveryCharge =
+    orderType === 'takeaway'
+      ? 0
+      : isFreeDelivery
+      ? 0
+      : ownerSettings.deliveryCharge || 30;
 
-  const pointsDiscountAmount = Number((effectivePointsRedeemed * 0.5).toFixed(2));
-  const totalDiscount = Number((newCustomerDiscount + pointsDiscountAmount).toFixed(2));
-  const finalTotal = Math.max(0, Number((cartTotal - totalDiscount).toFixed(2)));
+  const finalTotal = Math.max(
+    0,
+    Number((cartTotal - discount5Percent + deliveryCharge).toFixed(2))
+  );
 
-  // For every ₹100 actually spent, customer earns 5 Sweet Points
-  const pointsToEarn = calculateEarnablePoints(finalTotal);
+  // Delivery validation
+  const cleanPin = pincode.trim();
+  const isPinRestricted =
+    cleanPin.length === 6 &&
+    ownerSettings.supportedPincodes &&
+    ownerSettings.supportedPincodes.length > 0 &&
+    !ownerSettings.supportedPincodes.includes(cleanPin);
 
-  const handleToggleRedeem = () => {
-    if (!isRedeemingPoints) {
-      setIsRedeemingPoints(true);
-      setPointsInput(maxRedeemablePoints);
-    } else {
-      setIsRedeemingPoints(false);
-      setPointsInput(0);
+  const isBelowMinOrder =
+    orderType === 'delivery' &&
+    ownerSettings.minimumOrder > 0 &&
+    cartTotal < ownerSettings.minimumOrder;
+
+  // Confirm and Place Order
+  const handlePlaceOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    // Form Validations
+    if (!customerName.trim()) {
+      setErrorMessage(language === 'bn' ? 'অনুগ্রহ করে আপনার পুরো নাম লিখুন।' : 'Please enter your full name.');
+      return;
     }
-  };
+    const cleanPhone = customerPhone.replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10) {
+      setErrorMessage(
+        language === 'bn'
+          ? 'অনুগ্রহ করে সঠিক ১০ সংখ্যার মোবাইল নম্বর দিন।'
+          : 'Please enter a valid 10-digit mobile number.'
+      );
+      return;
+    }
 
-  const handleDirectOrderCheckout = async () => {
-    if (cart.length === 0) return;
-    setIsSubmittingOrder(true);
+    if (orderType === 'delivery') {
+      if (!ownerSettings.deliveryAvailable) {
+        setErrorMessage(
+          language === 'bn'
+            ? 'বর্তমানে হোম ডেলিভারি সাময়িকভাবে বন্ধ আছে। আপনি টেকওয়ে হিসেবে নিতে পারেন অথবা দোকানে যোগাযোগ করুন।'
+            : 'Home delivery is temporarily unavailable. Please select takeaway or contact the shop.'
+        );
+        return;
+      }
+
+      if (isBelowMinOrder) {
+        setErrorMessage(
+          language === 'bn'
+            ? `ডেলিভারির জন্য সর্বনিম্ন অর্ডার মূল্য ₹${ownerSettings.minimumOrder}।`
+            : `Minimum order for delivery is ₹${ownerSettings.minimumOrder}.`
+        );
+        return;
+      }
+
+      if (isPinRestricted) {
+        setErrorMessage(
+          language === 'bn'
+            ? 'এই পিন কোডে বর্তমানে ডেলিভারি উপলব্ধ নেই। অনুগ্রহ করে ঘোষ সুইট হাউজে যোগাযোগ করুন (৯৭৩৩৩৬৩৫৬২)।'
+            : 'Delivery is currently unavailable at this location. Please contact Ghosh Sweet House.'
+        );
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
 
     try {
-      // Record order in history & update customer stats
-      // Automatically synchronizes to Google Sheets via server API
-      const createdOrder = addOrderToHistory({
+      // 1. Generate Safe Unique Order ID
+      const orderId = generateOrderId();
+
+      // Determine address: if not provided by customer, set safe fallback
+      const finalDeliveryAddress = deliveryAddress.trim()
+        ? deliveryAddress.trim()
+        : orderType === 'delivery'
+        ? `Home Delivery (Contact: ${cleanPhone})`
+        : 'Pickup from Ghosh Sweet House Store';
+
+      // 2. Prepare raw payload for Firebase Cloud Firestore
+      const rawOrderPayload = {
+        orderId,
+        customerId: currentCustomer ? currentCustomer.id : `guest_${cleanPhone}`,
+        customerName: customerName.trim(),
+        phone: cleanPhone,
+        email: currentCustomer?.email || '',
+        items: cart.map((item) => ({
+          productId: item.product.id,
+          productName: item.product.nameEn,
+          productNameBn: item.product.nameBn,
+          portion: item.selectedPortion,
+          portionBn: item.selectedPortion,
+          price: item.price,
+          quantity: item.quantity,
+          subtotal: item.price * item.quantity
+        })),
+        subtotal: cartTotal,
+        deliveryCharge,
+        discountAmount: discount5Percent,
+        totalAmount: finalTotal,
+        paymentMethod,
+        paymentStatus: 'pending' as const,
+        status: 'PENDING' as const,
+        orderType,
+        deliveryAddress: finalDeliveryAddress,
+        village: village.trim(),
+        area: (area.trim() || village.trim()),
+        pincode: pincode.trim(),
+        landmark: landmark.trim(),
+        customerNote: customerNote.trim()
+      };
+
+      // 2b. Map and validate all mandatory fields against DEFAULT_ORDER_STRUCTURE
+      const { mappedOrder, valid, errors, undefinedFields, missingFields } =
+        mapAndValidateFirestoreOrder(rawOrderPayload);
+
+      console.log('[CartModal Checkout Debug] Mapped order validation:', {
+        orderId: mappedOrder.orderId,
+        valid,
+        errors,
+        undefinedFieldsCount: undefinedFields.length,
+        undefinedFields,
+        missingFields,
+        village: mappedOrder.village,
+        area: mappedOrder.area,
+        pincode: mappedOrder.pincode
+      });
+
+      if (undefinedFields.length > 0) {
+        console.warn(
+          `[CartModal Checkout Debug] Found ${undefinedFields.length} undefined fields: [${undefinedFields.join(', ')}]. Cleaned up prior to Firestore save.`
+        );
+      }
+
+      if (!valid) {
+        console.error('[CartModal Checkout] Order Validation Failed:', errors);
+        throw new Error(
+          language === 'bn'
+            ? `অর্ডার তথ্য অসম্পূর্ণ: ${errors[0]}`
+            : `Order validation failed: ${errors[0]}`
+        );
+      }
+
+      // 3. Write directly to Firestore with mapped payload
+      const createdFirestoreOrder = await createFirestoreOrder(mappedOrder);
+
+      // 4. Update local history and sync with Google Sheets
+      const localHistoryOrder = addOrderToHistory({
         items: [...cart],
         subtotal: cartTotal,
-        newCustomerDiscount,
-        pointsRedeemed: effectivePointsRedeemed,
-        pointsDiscountAmount,
-        discountAmount: totalDiscount,
+        newCustomerDiscount: discount5Percent,
+        pointsRedeemed: 0,
+        discountAmount: discount5Percent,
         finalTotal,
-        pointsEarned: pointsToEarn,
+        pointsEarned: Math.floor(finalTotal * 0.05),
         orderType,
-        customerName: customerName.trim() || (currentCustomer ? currentCustomer.name : undefined),
-        customerPhone: customerPhone.trim() || (currentCustomer ? currentCustomer.mobile : undefined),
+        customerName: customerName.trim(),
+        customerPhone: cleanPhone,
         deliveryAddress: deliveryAddress.trim(),
-        paymentMethod: paymentMethod === 'cod'
-          ? (language === 'bn' ? 'নগদ / কাউন্টারে প্রদেয়' : 'Cash on Delivery')
-          : (language === 'bn' ? 'ইউপিআই / অনলাইন কিউআর' : 'UPI / Online QR'),
-        specialNote: specialNote.trim(),
+        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online Payment',
+        specialNote: customerNote.trim(),
         status: 'New Order'
       });
 
-      setOrderSuccessId(createdOrder.id);
+      // 5. Background sync to Google Sheets
+      syncOrderToServerSheets(localHistoryOrder).catch((e) =>
+        console.warn('Google Sheets sync notice:', e)
+      );
+
+      // 6. Set success view and clear cart
+      setPlacedOrder(createdFirestoreOrder);
       clearCart();
-    } catch (err) {
-      console.error('Failed to submit order directly:', err);
+    } catch (err: any) {
+      console.error('Order creation error:', err);
+      setErrorMessage(
+        err.message || (language === 'bn' ? 'অর্ডার জমা দিতে সমস্যা হয়েছে। আবার চেষ্টা করুন।' : 'Failed to place order. Please retry.')
+      );
     } finally {
-      setIsSubmittingOrder(false);
+      setIsSubmitting(false);
     }
   };
 
-  const handlePhoneCheckout = () => {
-    if (cart.length === 0) return;
-
-    const createdOrder = addOrderToHistory({
-      items: [...cart],
-      subtotal: cartTotal,
-      newCustomerDiscount,
-      pointsRedeemed: effectivePointsRedeemed,
-      pointsDiscountAmount,
-      discountAmount: totalDiscount,
-      finalTotal,
-      pointsEarned: pointsToEarn,
-      orderType,
-      customerName: customerName.trim() || (currentCustomer ? currentCustomer.name : undefined),
-      customerPhone: customerPhone.trim() || (currentCustomer ? currentCustomer.mobile : undefined),
-      deliveryAddress: deliveryAddress.trim(),
-      paymentMethod: paymentMethod === 'cod'
-        ? (language === 'bn' ? 'নগদ / কাউন্টারে প্রদেয়' : 'Cash on Delivery')
-        : (language === 'bn' ? 'ইউপিআই / অনলাইন কিউআর' : 'UPI / Online QR'),
-      specialNote: specialNote.trim(),
-      status: 'New Order'
-    });
-
-    setOrderSuccessId(createdOrder.id);
-    clearCart();
-    window.location.href = `tel:${shopDetails.phone}`;
+  const handleOpenTracker = () => {
+    if (placedOrder) {
+      setTrackingOrderId(placedOrder.orderId);
+      setIsCartOpen(false);
+      setPlacedOrder(null);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden" id="cart-modal">
-      {/* Backdrop */}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-end bg-black/70 backdrop-blur-sm animate-fade-in"
+      onClick={() => setIsCartOpen(false)}
+    >
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
-        onClick={() => setIsCartOpen(false)}
-      />
-
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
-        <div
-          className={`w-screen max-w-md flex flex-col shadow-2xl border-l ${
-            isDark
-              ? 'bg-[#180E08] border-amber-500/30 text-stone-200'
-              : 'bg-[#FCF9F2] border-amber-800/20 text-stone-900'
-          }`}
-        >
-          {/* Drawer Header */}
-          <div className="p-4 sm:p-5 border-b border-amber-500/20 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-amber-500" />
-              <h3 className="text-lg font-bold font-bengali">{t.cartTitle}</h3>
-              {cart.length > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500 text-stone-950 font-bold">
-                  {cart.length}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Dashboard / Past orders trigger */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCartOpen(false);
-                  setIsDashboardOpen(true);
-                }}
-                className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 flex items-center gap-1"
-                title={language === 'bn' ? 'মিষ্টি ড্যাশবোর্ড' : 'Points Dashboard'}
-                id="cart-dashboard-btn"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline font-bengali">
-                  {language === 'bn' ? 'পয়েন্টস' : 'Points'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsCartOpen(false)}
-                className="p-1.5 rounded-full hover:bg-stone-500/20 text-stone-400 hover:text-stone-200 transition-colors"
-                id="cart-close-btn"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        className={`w-full max-w-lg h-full overflow-y-auto flex flex-col justify-between shadow-2xl transition-all ${
+          isDark
+            ? 'bg-[#180E08] border-l border-amber-900/60 text-stone-100'
+            : 'bg-white border-l border-stone-200 text-stone-900'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top Drawer Header */}
+        <div className="p-4 sm:p-5 border-b border-amber-500/20 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md bg-inherit">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="w-5 h-5 text-amber-500" />
+            <h3 className="font-bold text-base font-serif">
+              {language === 'bn' ? 'আপনার ব্যাগ ও অর্ডার' : 'Your Bag & Order'}
+            </h3>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsCartOpen(false)}
+            className="p-1.5 rounded-full hover:bg-stone-500/20 text-stone-400 hover:text-stone-100"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-          {/* Drawer Body */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-            {orderSuccessId ? (
-              /* ORDER CONFIRMATION VIEW */
-              <div className="text-center py-8 space-y-4">
-                <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
-                  <Check className="w-8 h-8" />
-                </div>
-                <div>
-                  <h4 className="text-xl font-bold font-bengali text-amber-400">
-                    {language === 'bn' ? 'অর্ডার সফলভাবে জমা হয়েছে!' : 'Order Placed Successfully!'}
-                  </h4>
-                  <p className="text-xs text-stone-400 font-mono mt-1">
-                    Order ID: #{orderSuccessId}
-                  </p>
-
-                  {/* Direct Google Sheets Confirmation */}
-                  <div className="mt-3 p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 text-left space-y-1.5">
-                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
-                      <FileSpreadsheet className="w-4 h-4 flex-shrink-0 text-emerald-400" />
-                      <span>{language === 'bn' ? 'সরাসরি Google Sheets-এ নথিবদ্ধ' : 'Directly Sent to Google Sheets'}</span>
-                    </div>
-                    <p className="text-[11px] text-emerald-100/80 leading-relaxed font-bengali">
-                      {language === 'bn'
-                        ? 'আপনার মিষ্টির অর্ডারটি কোনো WhatsApp মেসেজের অপেক্ষা ছাড়াই সরাসরি দোকানের Google Sheets ও রসুইঘরে সংরক্ষিত হয়েছে।'
-                        : 'Your order was sent directly to our official Google Sheets and kitchen queue without needing any WhatsApp message.'}
-                    </p>
-                    <div className="pt-1 flex items-center gap-2 text-[10px] text-emerald-400 font-mono">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span>Sheet: Orders • Status: Live Synchronized</span>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-stone-300 font-bengali mt-3 max-w-xs mx-auto">
-                    {language === 'bn'
-                      ? 'রসুইঘরে খাঁটি উপাদানে আপনার মিষ্টি প্রস্তুত হচ্ছে (Preparing)। লাইভ স্ট্যাটাস দেখতে নিচের বাটনে ক্লিক করুন।'
-                      : 'Your sweet treats are now being freshly prepared in our kitchen. You can track real-time status now.'}
-                  </p>
-                </div>
-
-                <div className="pt-2 flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCartOpen(false);
-                      setIsOrdersOpen(true);
-                      setOrderSuccessId(null);
-                    }}
-                    className="w-full py-3 rounded-xl bg-amber-500 text-stone-950 font-bold text-sm hover:bg-amber-400 transition-all flex items-center justify-center gap-2 shadow-lg"
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>{language === 'bn' ? 'অর্ডার স্ট্যাটাস ট্র্যাক করুন' : 'Track Order Status'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setOrderSuccessId(null)}
-                    className="w-full py-2.5 rounded-xl border border-stone-700 text-xs text-stone-300 hover:text-white transition-colors"
-                  >
-                    {language === 'bn' ? 'নতুন মিষ্টি যোগ করুন' : 'Continue Shopping'}
-                  </button>
-                </div>
+        {/* Drawer Body */}
+        <div className="p-4 sm:p-5 flex-1 space-y-4">
+          {placedOrder ? (
+            /* ===============================================================
+               SUCCESS SCREEN (Order Placed Successfully)
+               =============================================================== */
+            <div className="text-center py-6 space-y-4 animate-fade-in">
+              <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
+                <Check className="w-8 h-8" />
               </div>
-            ) : cart.length === 0 ? (
-              <div className="text-center py-16">
-                <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 mx-auto mb-4">
-                  <ShoppingBag className="w-8 h-8" />
-                </div>
-                <p className="font-bengali text-sm text-stone-400 max-w-xs mx-auto">
-                  {t.cartEmpty}
+
+              <div>
+                <h4 className="text-lg font-bold font-serif text-emerald-400">
+                  Order placed successfully!
+                </h4>
+                <p className="text-sm font-bold font-bengali text-amber-400 mt-0.5">
+                  আপনার অর্ডার সফলভাবে গ্রহণ করা হয়েছে।
                 </p>
-                <div className="mt-6 flex flex-col items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsCartOpen(false)}
-                    className="px-6 py-2.5 rounded-full bg-amber-500 text-stone-950 font-bold text-xs hover:bg-amber-400 transition-colors shadow"
-                  >
-                    {language === 'bn' ? 'মিষ্টি দেখুন' : 'Explore Sweets'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCartOpen(false);
-                      setIsOrdersOpen(true);
-                    }}
-                    className="text-xs text-amber-400 hover:underline flex items-center gap-1 font-bengali mt-2"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>{language === 'bn' ? 'পূর্বের অর্ডার থেকে রিঅর্ডার করুন' : 'Reorder from Past Orders'}</span>
-                  </button>
+                <div className="mt-2 inline-block px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 font-mono text-xs font-bold text-amber-500">
+                  Order ID: #{placedOrder.orderId}
                 </div>
               </div>
-            ) : (
-              <>
-                {/* Account / Loyalty Notification Banner */}
-                {!currentCustomer ? (
-                  <div
-                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
-                      isDark
-                        ? 'bg-amber-950/30 border-amber-500/30 text-amber-200'
-                        : 'bg-amber-50 border-amber-300 text-amber-950'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Gift className="w-5 h-5 text-amber-400 flex-shrink-0 animate-bounce" />
-                      <div>
-                        <span className="text-xs font-bold block font-bengali">
-                          {language === 'bn' ? '১০ মিষ্টি পয়েন্ট ও ৫% ছাড় চান?' : 'Want 10 Sweet Points & 5% OFF?'}
-                        </span>
-                        <span className="text-[11px] opacity-75 block">
-                          {language === 'bn' ? 'সাইন আপ করলেই সরাসরি ক্যাশ ছাড়!' : 'Sign up now to unlock discounts!'}
-                        </span>
-                      </div>
-                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => openSignUpModal()}
-                      className="px-3 py-1.5 rounded-xl bg-amber-500 text-stone-950 text-xs font-bold hover:bg-amber-400 flex-shrink-0 shadow-sm transition-all"
-                      id="cart-signup-prompt-btn"
-                    >
-                      {language === 'bn' ? 'সাইন আপ' : 'Sign Up'}
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
-                      isDark
-                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                        : 'bg-amber-50 border-amber-300 text-amber-900'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                      <div>
-                        <span className="text-xs font-bold block font-bengali">
-                          {currentCustomer.name} (
-                          {language === 'bn' ? 'লয়্যালটি গ্রাহক' : 'Loyalty Member'})
-                        </span>
-                        <span className="text-[11px] opacity-80 block">
-                          {language === 'bn'
-                            ? `উপলব্ধ: ${sweetPoints} পয়েন্ট = ₹${pointsToRupees(sweetPoints).toFixed(2)}`
-                            : `Available: ${sweetPoints} pts = ₹${pointsToRupees(sweetPoints).toFixed(2)}`}
-                        </span>
-                      </div>
-                    </div>
+              {/* Order Summary Receipt Box */}
+              <div
+                className={`p-4 rounded-2xl border text-left text-xs space-y-2 font-sans ${
+                  isDark ? 'bg-stone-900/60 border-stone-800' : 'bg-stone-50 border-stone-200'
+                }`}
+              >
+                <div className="flex justify-between items-center text-stone-500">
+                  <span>Placed At:</span>
+                  <OrderTimestamp timestamp={placedOrder.createdAt} mode="full" />
+                </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setIsDashboardOpen(true)}
-                      className="px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs font-bold border border-amber-500/30 font-bengali"
-                    >
-                      {language === 'bn' ? 'ড্যাশবোর্ড' : 'Dashboard'}
-                    </button>
-                  </div>
-                )}
+                <div className="flex justify-between text-stone-500">
+                  <span>Current Status:</span>
+                  <span className="font-bold text-amber-500 uppercase tracking-wider">
+                    {placedOrder.status} (Order Received)
+                  </span>
+                </div>
 
-                {/* Items List */}
-                <div className="space-y-3">
-                  {cart.map((item) => (
-                    <div
-                      key={`${item.product.id}-${item.selectedPortion}`}
-                      className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
-                        isDark ? 'bg-stone-900/60 border-amber-500/15' : 'bg-white border-amber-800/15 shadow-sm'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 flex-shrink-0 text-sm">
-                          🍬
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-sm font-bengali truncate">
-                            {language === 'bn' ? item.product.nameBn : item.product.nameEn}
-                          </h4>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-amber-500 font-semibold block">
-                              {item.selectedPortion} • ₹{item.price}
-                            </span>
-                            {item.product.nutrition && (
-                              <NutritionTooltip
-                                nutrition={item.product.nutrition}
-                                language={language}
-                                theme={theme}
-                                itemName={language === 'bn' ? item.product.nameBn : item.product.nameEn}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                <div className="flex justify-between text-stone-500">
+                  <span>Payment Method:</span>
+                  <span className="font-bold uppercase">
+                    {placedOrder.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online Payment'}
+                  </span>
+                </div>
 
-                      {/* Quantity Controller & Remove */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <div className="flex items-center border border-amber-500/30 rounded-xl overflow-hidden bg-stone-800/40">
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.product.id, item.selectedPortion, -1)}
-                            className="p-1.5 hover:bg-stone-700/60 text-stone-300"
-                            aria-label="Decrease quantity"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="px-2 text-xs font-bold text-amber-300">
-                            {item.quantity}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.product.id, item.selectedPortion, 1)}
-                            className="p-1.5 hover:bg-stone-700/60 text-stone-300"
-                            aria-label="Increase quantity"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
+                <div className="flex justify-between text-stone-500">
+                  <span>Delivery Address:</span>
+                  <span className="font-semibold text-right max-w-[200px] truncate">
+                    {placedOrder.deliveryAddress}
+                  </span>
+                </div>
 
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.product.id, item.selectedPortion)}
-                          className="p-1.5 text-rose-400 hover:text-rose-300 transition-colors"
-                          aria-label="Remove item"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                <div className="pt-2 border-t border-stone-200 dark:border-stone-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-stone-400 block">
+                    Ordered Sweets ({placedOrder.items.length}):
+                  </span>
+                  {placedOrder.items.map((it, idx) => (
+                    <div key={idx} className="flex justify-between text-stone-700 dark:text-stone-300">
+                      <span>
+                        {it.productName} ({it.portion}) × {it.quantity}
+                      </span>
+                      <span className="font-mono">₹{it.subtotal}</span>
                     </div>
                   ))}
                 </div>
 
-                {/* New Customer 5% Discount Banner */}
-                {isEligibleForNewCustomerDiscount ? (
-                  <div
-                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
-                      isDark
-                        ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
-                        : 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Gift className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                      <div>
-                        <span className="text-xs font-bold block">
-                          {language === 'bn' ? '🎉 নতুন গ্রাহকের ৫% ছাড় প্রয়োগ হয়েছে!' : '🎉 New Customer 5% Discount Applied!'}
-                        </span>
-                        <span className="text-[11px] opacity-80 block">
-                          {language === 'bn'
-                            ? `প্রথম ৫টি অর্ডারের ${((currentCustomer?.qualifyingOrdersCount || 0) + 1)} নম্বর অর্ডার (-₹${newCustomerDiscount.toFixed(2)})`
-                            : `Order ${(currentCustomer?.qualifyingOrdersCount || 0) + 1} of 5 qualifying orders (-₹${newCustomerDiscount.toFixed(2)})`}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-extrabold text-emerald-500 font-mono bg-emerald-500/10 px-2 py-1 rounded-lg">
-                      -5%
-                    </span>
-                  </div>
-                ) : currentCustomer && currentCustomer.qualifyingOrdersCount < 5 && cartTotal < 100 ? (
-                  <div className="p-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-400 text-xs flex items-center gap-2">
-                    <Gift className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>
-                      {language === 'bn'
-                        ? `আর মাত্র ₹${(100 - cartTotal)} টাকার মিষ্টি যোগ করলেই পাবেন ৫% ছাড়!`
-                        : `Add sweets worth ₹${100 - cartTotal} more to unlock 5% new customer discount!`}
-                    </span>
-                  </div>
-                ) : null}
-
-                {/* Redeem Sweet Points for Cash Discount Box */}
-                {sweetPoints > 0 && maxRedeemablePoints > 0 ? (
-                  <div
-                    className={`p-3.5 rounded-2xl border transition-all ${
-                      isRedeemingPoints
-                        ? 'bg-amber-500/15 border-amber-500/40'
-                        : isDark
-                        ? 'bg-stone-900/40 border-stone-800'
-                        : 'bg-stone-50 border-stone-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Coins className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                        <div>
-                          <span className="text-xs font-bold font-bengali block">
-                            {language === 'bn' ? 'মিষ্টি পয়েন্টস রিডিম করুন' : 'Redeem Sweet Points'}
-                          </span>
-                          <span className="text-[11px] text-stone-400 block">
-                            {language === 'bn'
-                              ? `১ পয়েন্ট = ₹০.৫০ (সর্বোচ্চ ₹${pointsToRupees(maxRedeemablePoints).toFixed(2)} ছাড়)`
-                              : `1 Point = ₹0.50 (Max ₹${pointsToRupees(maxRedeemablePoints).toFixed(2)} off)`}
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleToggleRedeem}
-                        id="cart-apply-points-btn"
-                        className={`text-xs px-3 py-1 rounded-full font-bold transition-all ${
-                          isRedeemingPoints
-                            ? 'bg-emerald-500 text-stone-950 shadow'
-                            : 'bg-amber-500 text-stone-950 hover:bg-amber-400'
-                        }`}
-                      >
-                        {isRedeemingPoints
-                          ? (language === 'bn' ? 'প্রযুক্ত ✓' : 'Applied ✓')
-                          : (language === 'bn' ? 'ব্যবহার করুন' : 'Apply')}
-                      </button>
-                    </div>
-
-                    {isRedeemingPoints && (
-                      <div className="mt-3 pt-3 border-t border-amber-500/20 space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-stone-300 font-bengali">
-                            {language === 'bn' ? 'রিডিম করার পরিমাণ:' : 'Points to Redeem:'}
-                          </span>
-                          <span className="font-bold text-amber-400 font-mono">
-                            {effectivePointsRedeemed} pts (= ₹{pointsDiscountAmount.toFixed(2)} ছাড়)
-                          </span>
-                        </div>
-                        <input
-                          type="range"
-                          min="1"
-                          max={maxRedeemablePoints}
-                          value={effectivePointsRedeemed}
-                          onChange={(e) => setPointsInput(parseInt(e.target.value, 10))}
-                          className="w-full accent-amber-500 cursor-pointer"
-                        />
-                        <div className="flex justify-between text-[10px] text-stone-500">
-                          <span>1 pt (₹0.50)</span>
-                          <span>{maxRedeemablePoints} pts (₹{pointsToRupees(maxRedeemablePoints).toFixed(2)})</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-
-                {/* Customer Details Form for Quick Order */}
-                <div
-                  className={`p-4 rounded-2xl border space-y-3 mt-4 ${
-                    isDark ? 'bg-stone-900/40 border-amber-500/20' : 'bg-amber-50/70 border-amber-800/15'
-                  }`}
-                >
-                  <div className="text-xs font-bold font-bengali text-amber-400 uppercase tracking-wider flex items-center justify-between">
-                    <span>{language === 'bn' ? 'অর্ডারের বিবরণ' : 'Order Information'}</span>
-                    {currentCustomer && (
-                      <span className="text-[11px] text-emerald-400 lowercase font-normal flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3" />
-                        {language === 'bn' ? 'অ্যাকাউন্ট সংযুক্ত' : 'Account linked'}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Delivery vs Takeaway */}
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setOrderType('delivery')}
-                      className={`py-1.5 rounded-xl font-bold border transition-all ${
-                        orderType === 'delivery'
-                          ? 'bg-amber-500 text-stone-950 border-amber-500'
-                          : 'border-stone-700 text-stone-400'
-                      }`}
-                    >
-                      {language === 'bn' ? 'ডেলিভারি' : 'Delivery'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOrderType('takeaway')}
-                      className={`py-1.5 rounded-xl font-bold border transition-all ${
-                        orderType === 'takeaway'
-                          ? 'bg-amber-500 text-stone-950 border-amber-500'
-                          : 'border-stone-700 text-stone-400'
-                      }`}
-                    >
-                      {language === 'bn' ? 'টেকওয়ে (দোকান)' : 'Takeaway'}
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-amber-300 mb-1 font-bengali">
-                      {t.yourName}
-                    </label>
-                    <input
-                      type="text"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder={language === 'bn' ? 'আপনার পুরো নাম' : 'Your name'}
-                      className={`w-full px-3 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 ${
-                        isDark ? 'bg-stone-950 border-stone-700 text-white' : 'bg-white border-stone-300 text-stone-900'
-                      }`}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-amber-300 mb-1 font-bengali">
-                      {language === 'bn' ? 'মোবাইল নম্বর' : 'Phone Number'}
-                    </label>
-                    <input
-                      type="tel"
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      placeholder="9733363562"
-                      className={`w-full px-3 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono ${
-                        isDark ? 'bg-stone-950 border-stone-700 text-white' : 'bg-white border-stone-300 text-stone-900'
-                      }`}
-                    />
-                  </div>
-
-                  {orderType === 'delivery' && (
-                    <div>
-                      <label className="block text-[11px] font-semibold text-amber-300 mb-1 font-bengali">
-                        {t.deliveryAddress}
-                      </label>
-                      <input
-                        type="text"
-                        value={deliveryAddress}
-                        onChange={(e) => setDeliveryAddress(e.target.value)}
-                        placeholder={language === 'bn' ? 'গ্রাম/এলাকা, দুইসাটাবিঘি, কালিয়াচক' : 'Area/Village, Kaliachak, Malda'}
-                        className={`w-full px-3 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 ${
-                          isDark ? 'bg-stone-950 border-stone-700 text-white' : 'bg-white border-stone-300 text-stone-900'
-                        }`}
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-amber-300 mb-1 font-bengali">
-                      {language === 'bn' ? 'মূল্য পরিশোধ পদ্ধতি (Payment Method)' : 'Payment Method'}
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('cod')}
-                        className={`p-2 rounded-xl text-left border text-xs transition-all flex flex-col gap-0.5 ${
-                          paymentMethod === 'cod'
-                            ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold ring-1 ring-amber-500'
-                            : isDark
-                            ? 'bg-stone-900 border-stone-800 text-stone-300 hover:border-amber-500/40'
-                            : 'bg-stone-50 border-stone-200 text-stone-700 hover:border-amber-500/40'
-                        }`}
-                      >
-                        <span className="font-bengali text-xs">
-                          {language === 'bn' ? '💵 নগদ / কাউন্টারে' : '💵 Cash / Counter'}
-                        </span>
-                        <span className="text-[10px] text-stone-400 font-normal">
-                          {language === 'bn' ? 'ডেলিভারি বা তোলার সময়' : 'Pay at delivery/pickup'}
-                        </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('upi')}
-                        className={`p-2 rounded-xl text-left border text-xs transition-all flex flex-col gap-0.5 ${
-                          paymentMethod === 'upi'
-                            ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold ring-1 ring-amber-500'
-                            : isDark
-                            ? 'bg-stone-900 border-stone-800 text-stone-300 hover:border-amber-500/40'
-                            : 'bg-stone-50 border-stone-200 text-stone-700 hover:border-amber-500/40'
-                        }`}
-                      >
-                        <span className="font-bengali text-xs">
-                          {language === 'bn' ? '📱 ইউপিআই / কিউআর' : '📱 UPI / QR Online'}
-                        </span>
-                        <span className="text-[10px] text-stone-400 font-normal">
-                          {language === 'bn' ? 'GPay, PhonePe, Paytm' : 'Online instant QR'}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
+                <div className="pt-2 border-t border-stone-200 dark:border-stone-800 flex justify-between font-bold text-sm">
+                  <span>Total Amount:</span>
+                  <span className="text-amber-500 font-mono">₹{placedOrder.totalAmount}</span>
                 </div>
-              </>
-            )}
-          </div>
-
-          {/* Drawer Footer with Complete Transparent Breakdown */}
-          {cart.length > 0 && !orderSuccessId && (
-            <div className="p-4 sm:p-5 border-t border-amber-500/20 space-y-3 flex-shrink-0">
-              {/* Cost Summary Breakdown matching all user requirements */}
-              <div className="space-y-1.5 text-xs">
-                {/* 1. Subtotal */}
-                <div className="flex items-center justify-between text-stone-400">
-                  <span className="font-bengali">{t.subtotal}:</span>
-                  <span className="font-mono">₹{cartTotal.toFixed(2)}</span>
-                </div>
-
-                {/* 2. New Customer Discount */}
-                {newCustomerDiscount > 0 && (
-                  <div className="flex items-center justify-between text-emerald-400 font-semibold">
-                    <span className="font-bengali flex items-center gap-1">
-                      <Gift className="w-3 h-3" />
-                      {language === 'bn' ? 'নতুন গ্রাহকের ৫% ছাড়:' : 'New Customer 5% Discount:'}
-                    </span>
-                    <span className="font-mono font-bold">-₹{newCustomerDiscount.toFixed(2)}</span>
-                  </div>
-                )}
-
-                {/* 3. Sweet Points Used */}
-                {effectivePointsRedeemed > 0 && (
-                  <div className="flex items-center justify-between text-amber-400 font-semibold">
-                    <span className="font-bengali flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" />
-                      {language === 'bn'
-                        ? `ব্যবহৃত মিষ্টি পয়েন্টস (${effectivePointsRedeemed} pts):`
-                        : `Sweet Points Used (${effectivePointsRedeemed} pts):`}
-                    </span>
-                    <span className="font-mono font-bold">-₹{pointsDiscountAmount.toFixed(2)}</span>
-                  </div>
-                )}
-
-                {/* 4. Final Amount */}
-                <div className="flex items-center justify-between pt-1.5 border-t border-amber-500/15">
-                  <span className="text-sm font-bold font-bengali">
-                    {language === 'bn' ? 'চূড়ান্ত প্রদেয় মূল্য:' : 'Final Amount:'}
-                  </span>
-                  <span className="text-2xl font-black text-amber-400 font-mono">
-                    ₹{finalTotal.toFixed(2)}
-                  </span>
-                </div>
-
-                {/* Points to be earned notice */}
-                {pointsToEarn > 0 && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-amber-300/90 bg-amber-500/10 px-2.5 py-1 rounded-lg">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-                    <span>
-                      {language === 'bn'
-                        ? `এই অর্ডারে পাবেন +${pointsToEarn} মিষ্টি পয়েন্ট (মূল্য: ₹${(pointsToEarn * 0.5).toFixed(2)})!`
-                        : `You will earn +${pointsToEarn} Sweet Points (₹${(pointsToEarn * 0.5).toFixed(2)} value)!`}
-                    </span>
-                  </div>
-                )}
               </div>
 
-              <div className="flex flex-col gap-2 pt-1">
-                {/* Direct Google Sheets Checkout */}
+              {/* Action Buttons */}
+              <div className="pt-2 space-y-2">
                 <button
                   type="button"
-                  onClick={handleDirectOrderCheckout}
-                  disabled={isSubmittingOrder}
-                  id="cart-checkout-direct"
-                  className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow-lg shadow-amber-950/40 active:scale-95 transition-all disabled:opacity-60"
+                  onClick={handleOpenTracker}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 font-bold text-sm hover:shadow-lg hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2"
                 >
-                  {isSubmittingOrder ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
-                      <span>{language === 'bn' ? 'Google Sheets-এ অর্ডার পাঠানো হচ্ছে...' : 'Sending to Google Sheets...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <FileSpreadsheet className="w-4 h-4 text-stone-950" />
-                      <span>{t.checkoutWhatsApp}</span>
-                    </>
-                  )}
+                  <Clock className="w-4 h-4" />
+                  <span>
+                    {language === 'bn' ? 'সরাসরি অর্ডার ট্র্যাক করুন' : 'Track Order in Real-Time'}
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
 
-                {/* Call to Place Order */}
                 <button
                   type="button"
-                  onClick={handlePhoneCheckout}
-                  id="cart-checkout-call"
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-semibold text-xs border border-amber-500/40 text-amber-300 hover:bg-amber-950/40 transition-colors"
+                  onClick={() => window.print()}
+                  className="w-full py-2 rounded-xl border border-stone-300 dark:border-stone-700 text-xs font-semibold flex items-center justify-center gap-1.5 text-stone-600 dark:text-stone-400 hover:text-amber-500"
                 >
-                  <Phone className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{t.checkoutCall} ({shopDetails.phone})</span>
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>{language === 'bn' ? 'রসিদ প্রিন্ট করুন' : 'Print Invoice'}</span>
                 </button>
               </div>
             </div>
+          ) : cart.length === 0 ? (
+            /* ===============================================================
+               EMPTY CART
+               =============================================================== */
+            <div className="text-center py-16">
+              <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 mx-auto mb-4">
+                <ShoppingBag className="w-8 h-8" />
+              </div>
+              <p className="font-bengali text-sm text-stone-400 max-w-xs mx-auto">
+                {t.cartEmpty}
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsCartOpen(false)}
+                className="mt-6 px-6 py-2.5 rounded-full bg-amber-500 text-stone-950 font-bold text-xs hover:bg-amber-400 transition-colors shadow"
+              >
+                {language === 'bn' ? 'মিষ্টি দেখুন' : 'Explore Sweets'}
+              </button>
+            </div>
+          ) : (
+            /* ===============================================================
+               ACTIVE CART & CHECKOUT FORM
+               =============================================================== */
+            <>
+              {/* Items List */}
+              <div className="space-y-2.5">
+                {cart.map((item) => (
+                  <div
+                    key={`${item.product.id}-${item.selectedPortion}`}
+                    className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
+                      isDark
+                        ? 'bg-stone-900/60 border-amber-500/15'
+                        : 'bg-white border-amber-800/15 shadow-sm'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-xs sm:text-sm font-bengali truncate">
+                        {language === 'bn' ? item.product.nameBn : item.product.nameEn}
+                      </h4>
+                      <span className="text-xs text-amber-500 font-semibold block">
+                        {item.selectedPortion} • ₹{item.price}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center border border-amber-500/30 rounded-xl overflow-hidden bg-stone-800/40">
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(item.product.id, item.selectedPortion, -1)}
+                          className="p-1 hover:bg-stone-700/60 text-stone-300"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="px-2 text-xs font-bold text-amber-300">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(item.product.id, item.selectedPortion, 1)}
+                          className="p-1 hover:bg-stone-700/60 text-stone-300"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeFromCart(item.product.id, item.selectedPortion)}
+                        className="p-1 text-rose-400 hover:text-rose-300"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Delivery / Takeaway Switch */}
+              <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                <button
+                  type="button"
+                  onClick={() => setOrderType('delivery')}
+                  className={`py-2 rounded-xl font-bold border transition-all ${
+                    orderType === 'delivery'
+                      ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-sm'
+                      : 'border-stone-700 text-stone-400'
+                  }`}
+                >
+                  {language === 'bn' ? '🚚 হোম ডেলিভারি' : '🚚 Home Delivery'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrderType('takeaway')}
+                  className={`py-2 rounded-xl font-bold border transition-all ${
+                    orderType === 'takeaway'
+                      ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-sm'
+                      : 'border-stone-700 text-stone-400'
+                  }`}
+                >
+                  {language === 'bn' ? '🏬 কাউন্টার পিকআপ' : '🏬 Counter Pickup'}
+                </button>
+              </div>
+
+              {/* Error Alert Box */}
+              {errorMessage && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {/* Delivery Area Warning if applicable */}
+              {orderType === 'delivery' && !ownerSettings.deliveryAvailable && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs">
+                  {language === 'bn'
+                    ? '⚠️ বর্তমানে হোম ডেলিভারি সাময়িকভাবে বন্ধ আছে। কাউন্টার পিকআপ বেছে নিতে পারেন।'
+                    : '⚠️ Home delivery is temporarily unavailable. You may choose counter pickup.'}
+                </div>
+              )}
+
+              {orderType === 'delivery' && isPinRestricted && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-xs">
+                  {language === 'bn'
+                    ? 'ডেলিভারি বর্তমানে এই স্থানে উপলব্ধ নেই। অনুগ্রহ করে ঘোষ সুইট হাউজে যোগাযোগ করুন।'
+                    : 'Delivery is currently unavailable at this location. Please contact Ghosh Sweet House.'}
+                </div>
+              )}
+
+              {/* Customer Delivery Details Form */}
+              <form onSubmit={handlePlaceOrder} className="space-y-3 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label htmlFor="customerFullName" className="block text-[11px] font-semibold text-stone-400">
+                        {language === 'bn' ? 'আপনার পুরো নাম *' : 'Full Name *'}
+                      </label>
+                      {customerName.trim().length >= 2 && (
+                        <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-0.5">
+                          <Check className="w-3 h-3 text-emerald-500" />
+                          <span>{language === 'bn' ? 'সঠিক' : 'Correct'}</span>
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      id="customerFullName"
+                      name="fullName"
+                      autoComplete="name"
+                      type="text"
+                      required
+                      minLength={2}
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="e.g. Ramesh Ghosh"
+                      className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 transition-colors ${
+                        customerName.trim().length >= 2
+                          ? isDark
+                            ? 'bg-stone-900 border-emerald-500/50 text-stone-100'
+                            : 'bg-stone-50 border-emerald-500/60 text-stone-900'
+                          : isDark
+                          ? 'bg-stone-900 border-stone-800'
+                          : 'bg-stone-50 border-stone-300'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-400 mb-1">
+                      {language === 'bn' ? 'মোবাইল নম্বর *' : 'Mobile Number *'}
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      maxLength={10}
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                      placeholder="10-digit number"
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                        isDark ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-300'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Optional Address & Notes Toggle */}
+                <div className="pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowMoreDetails(!showMoreDetails)}
+                    className="text-[11px] text-amber-500 hover:text-amber-400 font-semibold flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>
+                      {showMoreDetails
+                        ? (language === 'bn' ? '▲ অতিরিক্ত ঠিকানা বন্ধ করুন' : '▲ Hide address details')
+                        : (language === 'bn' ? '+ নির্দিষ্ট ঠিকানা বা নোট যোগ করতে চান? (ঐচ্ছিক)' : '+ Add specific address or landmark (Optional)')}
+                    </span>
+                  </button>
+                </div>
+
+                {showMoreDetails && (
+                  <div className="space-y-3 pt-2 border-t border-dashed border-stone-300 dark:border-stone-800">
+                    {orderType === 'delivery' && (
+                      <>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-stone-400 mb-1">
+                            {language === 'bn' ? 'ডেলিভারির ঠিকানা (ঐচ্ছিক)' : 'Delivery Address (Optional)'}
+                          </label>
+                          <input
+                            type="text"
+                            value={deliveryAddress}
+                            onChange={(e) => setDeliveryAddress(e.target.value)}
+                            placeholder="House no., street, nearby spot..."
+                            className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                              isDark ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-300'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-stone-400 mb-1">
+                              {language === 'bn' ? 'গ্রাম' : 'Village'}
+                            </label>
+                            <input
+                              type="text"
+                              value={village}
+                              onChange={(e) => setVillage(e.target.value)}
+                              placeholder="e.g. Duisatabighi"
+                              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                                isDark ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-300'
+                              }`}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-stone-400 mb-1">
+                              {language === 'bn' ? 'এলাকা / পাড়া' : 'Area / Locality'}
+                            </label>
+                            <input
+                              type="text"
+                              value={area}
+                              onChange={(e) => setArea(e.target.value)}
+                              placeholder="e.g. Ghosh Para / Station Rd"
+                              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                                isDark ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-300'
+                              }`}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-stone-400 mb-1">
+                              {language === 'bn' ? 'পিন কোড' : 'PIN Code'}
+                            </label>
+                            <input
+                              type="text"
+                              maxLength={6}
+                              value={pincode}
+                              onChange={(e) => setPincode(e.target.value.replace(/[^0-9]/g, ''))}
+                              placeholder="e.g. 732201"
+                              className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                                isDark ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-300'
+                              }`}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-stone-400 mb-1">
+                              {language === 'bn' ? 'ল্যান্ডমার্ক (ঐচ্ছিক)' : 'Landmark (Optional)'}
+                            </label>
+                            <input
+                              type="text"
+                              value={landmark}
+                              onChange={(e) => setLandmark(e.target.value)}
+                              placeholder="Near school, temple..."
+                              className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                                isDark ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-300'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Optional Note */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-400 mb-1">
+                        {language === 'bn' ? 'বিশেষ নির্দেশ (ঐচ্ছিক)' : 'Order Note (Optional)'}
+                      </label>
+                      <input
+                        type="text"
+                        value={customerNote}
+                        onChange={(e) => setCustomerNote(e.target.value)}
+                        placeholder="e.g. Extra sugar syrup, pack for gifting..."
+                        className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                          isDark ? 'bg-stone-900 border-stone-800' : 'bg-stone-50 border-stone-300'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment Selection */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-stone-400 mb-1">
+                    {language === 'bn' ? 'পেমেন্ট পদ্ধতি' : 'Payment Method'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('cod')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        paymentMethod === 'cod'
+                          ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-bold'
+                          : 'border-stone-700 text-stone-400'
+                      }`}
+                    >
+                      <span className="block font-bold">💵 Cash on Delivery</span>
+                      <span className="text-[10px] text-stone-500">Pay when delivered</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('online')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        paymentMethod === 'online'
+                          ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-bold'
+                          : 'border-stone-700 text-stone-400'
+                      }`}
+                    >
+                      <span className="block font-bold">📱 Online Payment</span>
+                      <span className="text-[10px] text-stone-500">UPI / QR Code</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bill Breakdown */}
+                <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-900/60 text-xs space-y-1.5 font-mono">
+                  <div className="flex justify-between text-stone-500">
+                    <span>Subtotal:</span>
+                    <span>₹{cartTotal}</span>
+                  </div>
+                  {discount5Percent > 0 && (
+                    <div className="flex justify-between text-emerald-500">
+                      <span>5% Discount:</span>
+                      <span>-₹{discount5Percent}</span>
+                    </div>
+                  )}
+                  {orderType === 'delivery' && (
+                    <div className="flex justify-between text-stone-500">
+                      <span>Delivery Charge:</span>
+                      <span>{deliveryCharge === 0 ? 'FREE' : `₹${deliveryCharge}`}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-stone-900 dark:text-stone-100 font-bold text-sm pt-1 border-t border-stone-300 dark:border-stone-700">
+                    <span className="font-sans">Total Amount:</span>
+                    <span className="text-amber-500">₹{finalTotal}</span>
+                  </div>
+                </div>
+
+                {/* Submit Order Button */}
+                <button
+                  type="submit"
+                  disabled={isSubmitting || (orderType === 'delivery' && isPinRestricted)}
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 font-bold text-sm shadow-lg hover:shadow-amber-500/20 active:scale-[0.99] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>{language === 'bn' ? 'অর্ডার তৈরি হচ্ছে...' : 'Processing Order...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>{language === 'bn' ? 'অর্ডার নিশ্চিত করুন (Confirm Order)' : 'Confirm Order'}</span>
+                      <span className="font-mono">₹{finalTotal}</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </>
           )}
         </div>
       </div>

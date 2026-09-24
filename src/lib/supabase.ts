@@ -52,46 +52,12 @@ interface SimCustomer {
   created_at: string;
 }
 
-// Default initial accounts for seamless local testing
-const simCustomers: Map<string, SimCustomer> = new Map([
-  [
-    '9733363562',
-    {
-      id: 'cust-soumen-uuid-1001',
-      auth_user_id: 'auth-user-soumen-0001',
-      name: 'সৌমেন দাস (Soumen Das)',
-      phone: '9733363562',
-      sweet_points: 25,
-      total_points_earned: 35,
-      total_points_redeemed: 10,
-      qualifying_orders_count: 2, // 2 / 5 completed orders
-      created_at: new Date(Date.now() - 86400000 * 7).toISOString(),
-    },
-  ],
-]);
+// Default initial accounts for local testing (empty by default)
+const simCustomers: Map<string, SimCustomer> = new Map();
 
-const simTransactions: SweetPointTransaction[] = [
-  {
-    id: 'tx-001',
-    customer_id: 'cust-soumen-uuid-1001',
-    points: 10,
-    reason: 'Signup Bonus',
-    created_at: new Date(Date.now() - 86400000 * 7).toISOString(),
-  },
-  {
-    id: 'tx-002',
-    customer_id: 'cust-soumen-uuid-1001',
-    order_id: 'GSH-7892',
-    points: 13,
-    reason: 'Order Purchase',
-    created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
-  },
-];
+const simTransactions: SweetPointTransaction[] = [];
 
-let simCurrentAuthUser: { id: string; phone: string } | null = {
-  id: 'auth-user-soumen-0001',
-  phone: '9733363562',
-};
+let simCurrentAuthUser: { id: string; phone: string } | null = null;
 
 // ==============================================================================
 // HIGH-LEVEL AUTHENTICATION & RPC CALLS

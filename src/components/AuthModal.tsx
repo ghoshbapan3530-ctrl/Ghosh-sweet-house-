@@ -151,16 +151,6 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  const handleUseDemoAccount = async () => {
-    setMobile('9733363562');
-    setOtpCode('123456');
-    setName('সৌমেন দাস (Soumen Das)');
-    setIsLoading(true);
-    await verifyOtpAndAuthenticate('9733363562', '123456', 'সৌমেন দাস (Soumen Das)');
-    setIsLoading(false);
-    handleClose();
-    setIsDashboardOpen(true);
-  };
 
   return (
     <div
@@ -313,7 +303,7 @@ export const AuthModal: React.FC = () => {
                     maxLength={10}
                     value={mobile}
                     onChange={(e) => setMobile(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="9733363562"
+                    placeholder={language === 'bn' ? '৯৮৭৬৫ ৪৩২১০' : '98765 43210'}
                     className={`w-full pl-16 pr-3 py-2.5 rounded-xl border text-sm outline-none transition-colors font-mono tracking-wider ${
                       isDark
                         ? 'bg-stone-900 border-amber-900/60 focus:border-amber-400 text-stone-100 placeholder-stone-500'
@@ -339,7 +329,7 @@ export const AuthModal: React.FC = () => {
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder={language === 'bn' ? 'যেমন: সৌমেন দাস' : 'e.g. Soumen Das'}
+                      placeholder={language === 'bn' ? 'আপনার নাম লিখুন' : 'Enter your name'}
                       className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none transition-colors ${
                         isDark
                           ? 'bg-stone-900 border-amber-900/60 focus:border-amber-400 text-stone-100 placeholder-stone-500'
@@ -452,7 +442,7 @@ export const AuthModal: React.FC = () => {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder={language === 'bn' ? 'যেমন: সৌমেন দাস' : 'e.g. Soumen Das'}
+                    placeholder={language === 'bn' ? 'আপনার নাম লিখুন' : 'Enter your name'}
                     className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none transition-colors ${
                       isDark
                         ? 'bg-stone-900 border-amber-900/60 focus:border-amber-400 text-stone-100 placeholder-stone-500'
@@ -483,21 +473,7 @@ export const AuthModal: React.FC = () => {
             </form>
           )}
 
-          {/* Quick Demo Option for testing */}
-          <div className="pt-3 border-t border-amber-500/20 text-center">
-            <button
-              type="button"
-              onClick={handleUseDemoAccount}
-              id="demo-account-login-btn"
-              className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-                isDark
-                  ? 'border-amber-500/30 text-amber-300/80 hover:text-amber-200 hover:bg-amber-950/40'
-                  : 'border-amber-800/20 text-amber-800/80 hover:text-amber-950 hover:bg-amber-100/60'
-              }`}
-            >
-              ⚡ {language === 'bn' ? 'টেস্ট অ্যাকাউন্ট (সৌমেন দাস: ২৫ পয়েন্ট, ২/৫ অর্ডার)' : 'Test with Sample Account (Soumen: 25 Pts, 2/5 Orders)'}
-            </button>
-          </div>
+
         </div>
       </div>
     </div>

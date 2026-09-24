@@ -1,0 +1,219 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Order",
+      "description": "Customer sweet and snack orders placed at Ghosh Sweet House",
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "description": "Unique human-readable order ID e.g. GH202609240001",
+          "pattern": "^GH[0-9]{12}$"
+        },
+        "customerId": {
+          "type": "string",
+          "description": "Identifier of the customer who placed the order"
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Customer full name",
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "description": "10-digit mobile phone number",
+          "pattern": "^[0-9]{10}$"
+        },
+        "email": {
+          "type": "string",
+          "description": "Customer email if provided",
+          "format": "email"
+        },
+        "items": {
+          "type": "array",
+          "description": "List of ordered items with portion and quantity"
+        },
+        "subtotal": {
+          "type": "number",
+          "description": "Sum total of ordered items before discounts and delivery"
+        },
+        "deliveryCharge": {
+          "type": "number",
+          "description": "Delivery fee in INR"
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Final payable amount in INR"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["cod", "online"],
+          "description": "Selected payment method"
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["pending", "paid", "failed"],
+          "description": "Current payment status"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "ACCEPTED",
+            "PREPARING",
+            "READY",
+            "OUT_FOR_DELIVERY",
+            "DELIVERED",
+            "CANCELLED"
+          ],
+          "description": "Order progression status"
+        },
+        "deliveryAddress": {
+          "type": "string",
+          "description": "Complete delivery address"
+        },
+        "village": {
+          "type": "string",
+          "description": "Village or area name e.g. Duisatabighi"
+        },
+        "area": {
+          "type": "string",
+          "description": "Area or landmark locality"
+        },
+        "pincode": {
+          "type": "string",
+          "description": "6-digit Indian postal code"
+        },
+        "landmark": {
+          "type": "string",
+          "description": "Nearby landmark for easy delivery"
+        },
+        "customerNote": {
+          "type": "string",
+          "description": "Special instructions from the customer"
+        },
+        "ownerNote": {
+          "type": "string",
+          "description": "Internal notes from Ghosh Sweet House management"
+        },
+        "estimatedMinutes": {
+          "type": "number",
+          "description": "Estimated time to prepare or deliver in minutes"
+        },
+        "cancelReason": {
+          "type": "string",
+          "description": "Reason provided by owner if cancelled"
+        },
+        "notificationSent": {
+          "type": "boolean",
+          "description": "Whether notification was dispatched for current status"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of order creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": [
+        "orderId",
+        "customerName",
+        "phone",
+        "items",
+        "subtotal",
+        "totalAmount",
+        "paymentMethod",
+        "status",
+        "createdAt"
+      ]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Registered customer loyalty and contact profile",
+      "type": "object",
+      "properties": {
+        "customerId": {
+          "type": "string",
+          "description": "Unique customer ID or Firebase Auth UID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Customer name"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Customer phone number"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "addresses": {
+          "type": "array",
+          "description": "Saved delivery addresses"
+        },
+        "fcmTokens": {
+          "type": "array",
+          "description": "Registered FCM tokens for push alerts"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": ["phone", "createdAt"]
+    },
+    "OwnerSettings": {
+      "title": "OwnerSettings",
+      "description": "Shop operational settings managed by the owner",
+      "type": "object",
+      "properties": {
+        "deliveryAvailable": {
+          "type": "boolean",
+          "description": "Toggle home delivery on/off"
+        },
+        "minimumOrder": {
+          "type": "number",
+          "description": "Minimum order value required for delivery"
+        },
+        "deliveryCharge": {
+          "type": "number",
+          "description": "Base delivery fee"
+        },
+        "freeDeliveryAbove": {
+          "type": "number",
+          "description": "Cart value threshold for free delivery"
+        },
+        "supportedPincodes": {
+          "type": "array",
+          "description": "List of postal PIN codes served"
+        },
+        "ownerFcmTokens": {
+          "type": "array",
+          "description": "FCM tokens for owner device push notifications"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer orders collection"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customer contact and device profile"
+    },
+    "/owner_settings/{settingsId}": {
+      "schema": "OwnerSettings",
+      "description": "Global shop operational configuration"
+    }
+  }
+}

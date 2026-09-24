@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useShop } from '../context/ShopContext';
 import { GhoshLogo } from './GhoshLogo';
-import { ShoppingBag, Sun, Moon, Menu, X, Phone, MapPin, Sparkles, Gift, User, Award, ShieldCheck } from 'lucide-react';
+import { ShoppingBag, Sun, Moon, Menu, X, Phone, MapPin, Sparkles, Gift, User, Award, ShieldCheck, Clock, Shield } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 
 export const Navbar: React.FC = () => {
@@ -19,7 +19,10 @@ export const Navbar: React.FC = () => {
     sweetPoints,
     pointsToRupees,
     t,
-    shopDetails
+    shopDetails,
+    setIsOwnerPortalOpen,
+    setTrackingOrderId,
+    setIsOrdersOpen
   } = useShop();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -34,6 +37,7 @@ export const Navbar: React.FC = () => {
 
   const navLinks = [
     { href: '#home', label: t.navHome },
+    { href: '#festivals', label: language === 'bn' ? 'শারদীয় দুর্গোৎসব' : 'Durga Puja' },
     { href: '#bestsellers', label: t.bestSellersTitle },
     { href: '#sweets', label: t.navSweets },
     { href: '#snacks', label: t.navSnacks },
@@ -254,6 +258,36 @@ export const Navbar: React.FC = () => {
               )}
             </button>
 
+            {/* Track Order Button */}
+            <button
+              type="button"
+              onClick={() => setIsOrdersOpen(true)}
+              className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${
+                isDark
+                  ? 'bg-stone-900/90 border-amber-500/30 text-amber-300 hover:border-amber-400'
+                  : 'bg-white border-stone-200 text-stone-700 hover:border-amber-500'
+              }`}
+              title="Track Customer Order"
+            >
+              <Clock className="w-3.5 h-3.5 text-amber-500" />
+              <span>{language === 'bn' ? 'অর্ডার ট্র্যাক' : 'Track Order'}</span>
+            </button>
+
+            {/* Owner Dashboard Link */}
+            <button
+              type="button"
+              onClick={() => setIsOwnerPortalOpen(true)}
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-semibold transition-all ${
+                isDark
+                  ? 'bg-stone-900/90 border-amber-500/30 text-stone-400 hover:text-amber-400 hover:border-amber-400'
+                  : 'bg-stone-100 border-stone-300 text-stone-600 hover:text-amber-600'
+              }`}
+              title="Owner Dashboard"
+            >
+              <Shield className="w-3.5 h-3.5 text-amber-500" />
+              <span>{language === 'bn' ? 'মালিক' : 'Owner'}</span>
+            </button>
+
             {/* Order Cart Button */}
             <button
               type="button"
@@ -355,6 +389,30 @@ export const Navbar: React.FC = () => {
             ))}
 
             <div className="pt-3 border-t border-amber-500/20 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setIsOrdersOpen(true);
+                }}
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold text-sm"
+              >
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span>{language === 'bn' ? 'অর্ডার স্ট্যাটাস ট্র্যাক করুন' : 'Track Order Status'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setIsOwnerPortalOpen(true);
+                }}
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-stone-800 border border-stone-700 text-stone-300 font-semibold text-sm"
+              >
+                <Shield className="w-4 h-4 text-amber-500" />
+                <span>{language === 'bn' ? 'মালিক পোর্টাল (Owner Dashboard)' : 'Owner Dashboard'}</span>
+              </button>
+
               <PWAInstallButton variant="button" className="w-full text-xs py-3" />
               <a
                 href={`tel:${shopDetails.phone}`}

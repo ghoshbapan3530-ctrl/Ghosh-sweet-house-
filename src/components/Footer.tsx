@@ -5,7 +5,7 @@ import { Phone, MessageSquare, MapPin, Clock, Heart, Shield, ArrowUp, ShieldChec
 import { PWAInstallButton } from './PWAInstallButton';
 
 export const Footer: React.FC = () => {
-  const { language, theme, shopDetails, t, setIsAdminOpen } = useShop();
+  const { language, theme, shopDetails, t, setIsAdminOpen, setIsOwnerPortalOpen } = useShop();
   const isDark = theme === 'dark';
 
   const scrollToTop = () => {
@@ -96,13 +96,20 @@ export const Footer: React.FC = () => {
                   {t.navAbout}
                 </a>
               </li>
-              <li className="pt-1 border-t border-amber-500/10">
+              <li className="pt-1 border-t border-amber-500/10 space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsOwnerPortalOpen(true)}
+                  className="text-amber-400 hover:text-amber-300 transition-colors font-bengali flex items-center gap-1.5 text-xs font-semibold"
+                >
+                  <span>🔐 {language === 'bn' ? 'মালিক পোর্টাল (Owner Dashboard)' : 'Owner Dashboard (Firebase)'}</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsAdminOpen(true)}
-                  className="text-amber-400 hover:text-amber-300 transition-colors font-bengali flex items-center gap-1.5 text-xs font-semibold"
+                  className="text-stone-400 hover:text-stone-300 transition-colors font-bengali flex items-center gap-1.5 text-[11px]"
                 >
-                  <span>📊 {language === 'bn' ? 'মালিকানা ড্যাশবোর্ড ও গুগল শিটস সিঙ্ক' : 'Owner Dashboard & Sheets'}</span>
+                  <span>📊 {language === 'bn' ? 'গুগল শিটস ও মেনু এডিটর' : 'Google Sheets & Menu Editor'}</span>
                 </button>
               </li>
             </ul>

@@ -147,6 +147,18 @@ export const Hero: React.FC = () => {
             <div
               className="flex flex-wrap items-center gap-3 sm:gap-4 mb-10 w-full sm:w-auto animate-fade-in"
             >
+              {/* Durga Puja Special Pre-Order CTA */}
+              <a
+                href="#festivals"
+                id="hero-puja-cta"
+                className="flex items-center justify-center gap-2 px-5 sm:px-6 py-3.5 rounded-full font-bold text-sm sm:text-base border border-amber-500/50 bg-gradient-to-r from-red-600/20 via-amber-500/20 to-red-600/20 hover:from-red-600/30 hover:to-amber-500/30 text-amber-300 transition-all shadow-sm active:scale-95"
+              >
+                <span>🪔</span>
+                <span className="font-bengali">
+                  {language === 'bn' ? 'শারদীয় অফার ও প্রি-অর্ডার' : 'Durga Puja Pre-Order'}
+                </span>
+              </a>
+
               {/* Order Now Button */}
               <button
                 type="button"

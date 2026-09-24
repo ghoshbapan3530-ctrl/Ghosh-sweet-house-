@@ -106,6 +106,11 @@ interface ShopContextType {
   reorder: (orderId: string) => void;
   isOrdersOpen: boolean;
   setIsOrdersOpen: (open: boolean) => void;
+  // Live Firestore Order Tracking & Owner Portal
+  trackingOrderId: string | null;
+  setTrackingOrderId: (id: string | null) => void;
+  isOwnerPortalOpen: boolean;
+  setIsOwnerPortalOpen: (open: boolean) => void;
   t: typeof translations.bn;
   resetToDefaults: () => void;
   resetToDefaultData: () => void;
@@ -113,81 +118,8 @@ interface ShopContextType {
 
 const ShopContext = createContext<ShopContextType | undefined>(undefined);
 
-// Initial sample customer representing the user-requested specification:
-// 25 Points = ₹12.50, Qualifying orders: 2/5, Minimum order: ₹100
-const defaultSampleCustomer: CustomerAccount = {
-  id: 'CUST-1001',
-  auth_user_id: 'auth-user-9733363562',
-  name: 'সৌমেন দাস (Soumen Das)',
-  mobile: '9733363562',
-  email: 'soumen@example.com',
-  pin: '1234',
-  sweetPoints: 25, // 25 Points = ₹12.50
-  totalPointsEarned: 35,
-  totalPointsRedeemed: 10,
-  qualifyingOrdersCount: 2, // 2/5 qualifying orders completed
-  createdAt: Date.now() - 1000 * 60 * 60 * 24 * 7
-};
-
-// Initial sample order for immediate demonstration
-const getInitialSampleOrders = (): OrderHistoryItem[] => [
-  {
-    id: 'GSH-7892',
-    date: '21 Sep 2026, 06:30 PM',
-    createdAt: Date.now() - 1000 * 60 * 25,
-    items: [
-      {
-        product: initialProducts[0] || {
-          id: 'spongy-rosogolla',
-          nameBn: 'স্পঞ্জ রসগোল্লা',
-          nameEn: 'Spongy Rosogolla',
-          category: 'sweet',
-          portionBn: '১০ পিস',
-          portionEn: '10 Pcs',
-          price: 150,
-          descriptionBn: 'রসালো স্পঞ্জ রসগোল্লা',
-          descriptionEn: 'Soft spongy sweet'
-        },
-        selectedPortion: '১০ পিস (10 Pcs)',
-        price: 150,
-        quantity: 1
-      },
-      {
-        product: initialProducts[2] || {
-          id: 'mishti-doi-handi',
-          nameBn: 'ঐতিহ্যবাহী মাটির ভাঁড়ের মিষ্টি দই',
-          nameEn: 'Traditional Clay Pot Mishti Doi',
-          category: 'sweet',
-          portionBn: '৫০০ গ্রাম',
-          portionEn: '500g',
-          price: 140,
-          descriptionBn: 'খাঁটি ঘন দুধের লালচে মিষ্টি দই',
-          descriptionEn: 'Caramelized thick Bengali curd'
-        },
-        selectedPortion: '৫০০ গ্রাম (500g)',
-        price: 140,
-        quantity: 1
-      }
-    ],
-    subtotal: 290,
-    newCustomerDiscount: 14.50, // 5% of 290
-    pointsRedeemed: 10,
-    pointsDiscountAmount: 5.00, // 10 pts * 0.50
-    discountAmount: 19.50,
-    finalTotal: 270.50,
-    pointsEarned: 13,
-    pointsAwarded: true,
-    isQualifyingOrder: true,
-    customerId: 'CUST-1001',
-    orderType: 'takeaway',
-    customerName: 'সৌমেন দাস (Soumen Das)',
-    customerPhone: '9733363562',
-    status: 'Ready for Pickup',
-    estimatedMinutes: 5,
-    syncStatus: 'synced',
-    lastSyncedAt: Date.now() - 1000 * 60 * 20
-  }
-];
+// Initial sample order list starts empty
+const getInitialSampleOrders = (): OrderHistoryItem[] => [];
 
 export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Language: Default is Bengali 'bn' as strictly requested
@@ -270,12 +202,12 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   // Customer Loyalty Accounts (in-memory session state)
-  const [accounts, setAccounts] = useState<CustomerAccount[]>([defaultSampleCustomer]);
+  const [accounts, setAccounts] = useState<CustomerAccount[]>([]);
 
   // Current active customer:
   // Backed by Supabase auth.users.id -> public.customers.auth_user_id.
   // We do NOT use localStorage, cookies, or device IDs for identity.
-  const [currentCustomer, setCurrentCustomer] = useState<CustomerAccount | null>(defaultSampleCustomer);
+  const [currentCustomer, setCurrentCustomer] = useState<CustomerAccount | null>(null);
 
   // Auth & Dashboard Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -283,23 +215,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
 
   // Transactions list from Supabase
-  const [transactions, setTransactions] = useState<SweetPointTransaction[]>([
-    {
-      id: 'tx-001',
-      customer_id: defaultSampleCustomer.id,
-      points: 10,
-      reason: 'Signup Bonus',
-      created_at: new Date(Date.now() - 86400000 * 7).toISOString(),
-    },
-    {
-      id: 'tx-002',
-      customer_id: defaultSampleCustomer.id,
-      order_id: 'GSH-7892',
-      points: 13,
-      reason: 'Order Purchase',
-      created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
-    },
-  ]);
+  const [transactions, setTransactions] = useState<SweetPointTransaction[]>([]);
 
   // Order History & Status
   const [orderHistory, setOrderHistory] = useState<OrderHistoryItem[]>(() => {
@@ -318,6 +234,19 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const match = window.location.pathname.match(/^\/order\/([A-Za-z0-9_-]+)/);
+      return match ? match[1] : null;
+    }
+    return null;
+  });
+  const [isOwnerPortalOpen, setIsOwnerPortalOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname.startsWith('/owner');
+    }
+    return false;
+  });
   // Discount RPC State for real-time validation via Supabase RPC
   const [discountRpcState, setDiscountRpcState] = useState<DiscountRpcResponse | null>(null);
 
@@ -488,11 +417,6 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true, account: existing };
     }
 
-    if (cleanMobile === '9733363562') {
-      setCurrentCustomer(defaultSampleCustomer);
-      setIsAuthModalOpen(false);
-      return { success: true, account: defaultSampleCustomer };
-    }
 
     return {
       success: false,
@@ -853,8 +777,8 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProducts(initialProducts);
     setShopDetails(initialShopDetails);
     setReviews(initialReviews);
-    setCurrentCustomer(defaultSampleCustomer);
-    setAccounts([defaultSampleCustomer]);
+    setCurrentCustomer(null);
+    setAccounts([]);
     setOrderHistory(getInitialSampleOrders());
     localStorage.removeItem('ghosh_products_v6');
     localStorage.removeItem('ghosh_shop_details');
@@ -928,6 +852,10 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
         reorder,
         isOrdersOpen,
         setIsOrdersOpen,
+        trackingOrderId,
+        setTrackingOrderId,
+        isOwnerPortalOpen,
+        setIsOwnerPortalOpen,
         t,
         resetToDefaults,
         resetToDefaultData

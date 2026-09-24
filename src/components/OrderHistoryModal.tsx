@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useShop } from '../context/ShopContext';
 import {
   X,
@@ -16,10 +16,14 @@ import {
   AlertCircle,
   Truck,
   FileSpreadsheet,
-  RefreshCw
+  RefreshCw,
+  Printer,
+  FileText,
+  Gift
 } from 'lucide-react';
-import { OrderStatus } from '../types';
+import { OrderStatus, OrderHistoryItem } from '../types';
 import { SyncStatusBadge } from './SyncStatusBadge';
+import { InvoiceModal } from './InvoiceModal';
 
 export const OrderHistoryModal: React.FC = () => {
   const {
@@ -29,12 +33,14 @@ export const OrderHistoryModal: React.FC = () => {
     reorder,
     simulateNextOrderStatus,
     retrySyncOrder,
-    sweetPoints,
     language,
     theme,
     t,
     setIsCartOpen
   } = useShop();
+
+  const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<OrderHistoryItem | null>(null);
+  const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
 
   if (!isOrdersOpen) return null;
 
@@ -136,7 +142,7 @@ export const OrderHistoryModal: React.FC = () => {
 
           {/* Modal Content Scrollable Area */}
           <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
-            {/* VIP Loyalty Rewards Card */}
+            {/* VIP Ghosh Sweet Club Special 5% Discount Card */}
             <div
               className={`rounded-2xl p-4 sm:p-5 border relative overflow-hidden shadow-lg ${
                 isDark
@@ -154,45 +160,37 @@ export const OrderHistoryModal: React.FC = () => {
                     </span>
                     <span className="text-xs text-amber-500 font-semibold flex items-center gap-1">
                       <TrendingUp className="w-3.5 h-3.5" />
-                      {language === 'bn' ? 'সক্রিয়' : 'Active'}
+                      {language === 'bn' ? 'সক্রিয় সুবিধা' : 'Active Privileges'}
                     </span>
                   </div>
 
                   <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl sm:text-4xl font-black text-amber-400">
-                      {sweetPoints}
+                    <span className="text-2xl sm:text-3xl font-black text-amber-400">
+                      5% OFF
                     </span>
                     <span className="text-sm font-bold font-bengali text-amber-300">
-                      {language === 'bn' ? 'মিষ্টি পয়েন্টস (Sweet Points)' : 'Sweet Points'}
+                      {language === 'bn' ? 'ফ্ল্যাট ছাড় (₹১০০+ অর্ডারে)' : 'Flat Discount on ₹100+ Orders'}
                     </span>
                   </div>
 
                   <p className="text-xs text-stone-400 font-bengali mt-1">
                     {language === 'bn'
-                      ? 'প্রতি ১০০ টাকার মিষ্টিতে ৫টি মিষ্টি পয়েন্ট অর্জন করুন (১ পয়েন্ট = ₹১ ছাড়)'
-                      : 'Earn 5 Sweet Points for every ₹100 spent (1 Point = ₹1 discount)'}
+                      ? 'যেকোনো ১০০ টাকার বেশি অর্ডারে সরাসরি ৫% নগদ ছাড় এবং প্রতিটি অর্ডারে প্রিন্টযোগ্য ইনভয়েস রসিদ।'
+                      : 'Enjoy flat 5% instant cash discount on every order over ₹100 with official printable invoice.'}
                   </p>
                 </div>
 
                 <div className="flex flex-col items-start sm:items-end justify-center gap-2 bg-amber-500/10 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none">
-                  <div className="text-right">
-                    <span className="text-[11px] text-stone-400 block font-bengali">
-                      {language === 'bn' ? 'রিডিম মূল্য' : 'Redeem Value'}
-                    </span>
-                    <span className="text-lg font-bold text-emerald-400">
-                      ≈ ₹{sweetPoints} {language === 'bn' ? 'ছাড়' : 'Discount'}
-                    </span>
-                  </div>
-
                   <button
                     type="button"
                     onClick={() => {
                       setIsOrdersOpen(false);
                       setIsCartOpen(true);
                     }}
-                    className="text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-500 text-stone-950 hover:bg-amber-400 transition-colors flex items-center gap-1.5"
+                    className="text-xs font-bold px-3.5 py-2 rounded-xl bg-amber-500 text-stone-950 hover:bg-amber-400 transition-colors flex items-center gap-1.5 shadow"
                   >
-                    <span>{language === 'bn' ? 'ঝুড়িতে রিডিম করুন' : 'Redeem in Cart'}</span>
+                    <ShoppingBag className="w-3.5 h-3.5" />
+                    <span>{language === 'bn' ? 'নতুন মিষ্টি অর্ডার করুন' : 'Order More Sweets'}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -408,8 +406,28 @@ export const OrderHistoryModal: React.FC = () => {
                           )}
                         </div>
 
-                        {/* ROW ACTIONS: RETRY SYNC & REORDER BUTTON */}
+                        {/* ROW ACTIONS: PRINT INVOICE, RETRY SYNC & REORDER BUTTON */}
                         <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedInvoiceOrder(order);
+                              setIsInvoiceOpen(true);
+                            }}
+                            id={`print-invoice-btn-${order.id}`}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs border transition-all active:scale-95 shadow-sm ${
+                              isDark
+                                ? 'bg-stone-800 hover:bg-stone-700 text-amber-300 border-amber-500/30'
+                                : 'bg-stone-100 hover:bg-stone-200 text-amber-900 border-stone-300'
+                            }`}
+                            title={language === 'bn' ? 'অর্ডার রসিদ / ইনভয়েস প্রিন্ট করুন' : 'Print Order Invoice / Save as PDF'}
+                          >
+                            <Printer className="w-3.5 h-3.5 text-amber-400" />
+                            <span className="font-bengali">
+                              {language === 'bn' ? 'রসিদ প্রিন্ট' : 'Print Invoice'}
+                            </span>
+                          </button>
+
                           {order.syncStatus === 'failed' && (
                             <button
                               type="button"
@@ -444,6 +462,15 @@ export const OrderHistoryModal: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Clean Printable PDF-like Order Invoice Modal */}
+      <InvoiceModal
+        order={selectedInvoiceOrder}
+        isOpen={isInvoiceOpen}
+        onClose={() => setIsInvoiceOpen(false)}
+        language={language}
+        theme={theme}
+      />
     </div>
   );
 };

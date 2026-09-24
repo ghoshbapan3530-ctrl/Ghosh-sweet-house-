@@ -21,10 +21,12 @@ import {
   LogIn,
   LogOut,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Printer
 } from 'lucide-react';
 import { ProductItem, OrderStatus, OrderHistoryItem } from '../types';
 import { SyncStatusBadge } from './SyncStatusBadge';
+import { InvoiceModal } from './InvoiceModal';
 import {
   fetchSheetsSyncStatus,
   SheetsStatusInfo,
@@ -67,6 +69,10 @@ export const AdminPriceModal: React.FC = () => {
   const [batchSyncing, setBatchSyncing] = useState(false);
   const [batchSyncMsg, setBatchSyncMsg] = useState<string | null>(null);
 
+  const handlePriceChange = (id: string, price: number) => {
+    setEditedPrices(prev => ({ ...prev, [id]: price }));
+  };
+
   // Google OAuth User state
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [isSigningInGoogle, setIsSigningInGoogle] = useState(false);
@@ -82,6 +88,8 @@ export const AdminPriceModal: React.FC = () => {
   // Recorded orders read from Google Sheets
   const [isReadingSheets, setIsReadingSheets] = useState(false);
   const [sheetOrders, setSheetOrders] = useState<SheetRecordedOrder[]>([]);
+  const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<OrderHistoryItem | null>(null);
+  const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [sheetReadSource, setSheetReadSource] = useState<string>('');
 
   const isDark = theme === 'dark';
@@ -694,11 +702,20 @@ export const AdminPriceModal: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Mobile Status Selector */}
+                          {/* Mobile Status Selector & Print Invoice */}
                           <div className="pt-2 flex items-center justify-between gap-2 border-t border-stone-800/80">
-                            <span className="text-[11px] font-semibold text-stone-400 font-bengali">
-                              {language === 'bn' ? 'স্ট্যাটাস বদলান:' : 'Change Status:'}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedInvoiceOrder(order);
+                                setIsInvoiceOpen(true);
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-stone-800 hover:bg-stone-700 text-amber-300 border border-amber-500/30 transition-all active:scale-95"
+                              title="Print Invoice / PDF"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{language === 'bn' ? 'রসিদ' : 'Print'}</span>
+                            </button>
                             <select
                               value={order.status}
                               onChange={(e) => handleStatusChange(order.id, e.target.value as OrderStatus)}
@@ -840,7 +857,19 @@ export const AdminPriceModal: React.FC = () => {
                               </td>
 
                               {/* Actions */}
-                              <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <td className="py-3 px-3 text-right whitespace-nowrap space-x-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedInvoiceOrder(order);
+                                    setIsInvoiceOpen(true);
+                                  }}
+                                  title="Print Order Invoice / PDF"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-stone-800 hover:bg-stone-700 text-amber-300 border border-amber-500/30 transition-all active:scale-95"
+                                >
+                                  <Printer className="w-3 h-3 text-amber-400" />
+                                  <span>Print</span>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => retrySyncOrder(order.id)}
@@ -1106,6 +1135,15 @@ export const AdminPriceModal: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Owner Printable Invoice View */}
+      <InvoiceModal
+        order={selectedInvoiceOrder}
+        isOpen={isInvoiceOpen}
+        onClose={() => setIsInvoiceOpen(false)}
+        language={language}
+        theme={theme}
+      />
     </div>
   );
 };

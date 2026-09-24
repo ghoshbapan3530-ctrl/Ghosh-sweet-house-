@@ -218,7 +218,7 @@ export const CelebrationOrders: React.FC = () => {
                         type="text"
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder={language === 'bn' ? 'উদা: রাহুল ঘোষ' : 'e.g. Rahul Ghosh'}
+                        placeholder={language === 'bn' ? 'আপনার পুরো নাম' : 'Your full name'}
                         className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 ${
                           isDark ? 'bg-stone-900/80 border-amber-500/30 text-white' : 'bg-stone-50 border-stone-300 text-stone-900'
                         }`}
@@ -235,7 +235,7 @@ export const CelebrationOrders: React.FC = () => {
                           type="tel"
                           value={customerPhone}
                           onChange={(e) => setCustomerPhone(e.target.value)}
-                          placeholder="9733363562"
+                          placeholder={language === 'bn' ? 'যেমন: ৯৮৭৬৫ ৪৩২১০' : 'e.g. 98765 43210'}
                           className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 ${
                             isDark ? 'bg-stone-900/80 border-amber-500/30 text-white' : 'bg-stone-50 border-stone-300 text-stone-900'
                           }`}
