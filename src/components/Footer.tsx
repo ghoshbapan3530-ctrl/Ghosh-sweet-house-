@@ -1,7 +1,8 @@
 import React from 'react';
 import { useShop } from '../context/ShopContext';
 import { GhoshLogo } from './GhoshLogo';
-import { Phone, MessageSquare, MapPin, Clock, Heart, Shield, ArrowUp } from 'lucide-react';
+import { Phone, MessageSquare, MapPin, Clock, Heart, Shield, ArrowUp, ShieldCheck } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 export const Footer: React.FC = () => {
   const { language, theme, shopDetails, t, setIsAdminOpen } = useShop();
@@ -32,8 +33,25 @@ export const Footer: React.FC = () => {
                 : 'Ghosh Sweet House — Traditional Bengali sweets crafted with pure country cow milk chana, desi ghee, and time-honored artisanal passion.'}
             </p>
 
-            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-bengali">
+            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-bengali mb-3">
               <span className="font-bold">“{t.footerTagline}”</span>
+            </div>
+
+            {/* Govt Udyam Registration Badge */}
+            <div className="p-3 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 text-xs mb-4 flex items-center gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              <div>
+                <span className="text-[10px] uppercase font-bold text-emerald-400 block tracking-wider">
+                  {language === 'bn' ? 'সরকারি উদ্যোগ রেজিঃ নং' : 'Govt. Udyam Reg. No.'}
+                </span>
+                <span className="font-bold font-mono text-stone-100 tracking-wide text-xs">
+                  {shopDetails.registrationNo}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <PWAInstallButton variant="button" className="text-xs py-2.5 px-4 w-full sm:w-auto" />
             </div>
           </div>
 
@@ -77,6 +95,15 @@ export const Footer: React.FC = () => {
                 <a href="#about" className="hover:text-amber-300 transition-colors font-bengali">
                   {t.navAbout}
                 </a>
+              </li>
+              <li className="pt-1 border-t border-amber-500/10">
+                <button
+                  type="button"
+                  onClick={() => setIsAdminOpen(true)}
+                  className="text-amber-400 hover:text-amber-300 transition-colors font-bengali flex items-center gap-1.5 text-xs font-semibold"
+                >
+                  <span>📊 {language === 'bn' ? 'মালিকানা ড্যাশবোর্ড ও গুগল শিটস সিঙ্ক' : 'Owner Dashboard & Sheets'}</span>
+                </button>
               </li>
             </ul>
           </div>
@@ -143,18 +170,15 @@ export const Footer: React.FC = () => {
 
         {/* Bottom Bar with Copyright */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-stone-400">
-          <div className="font-bengali">
-            {t.footerCopyright}
+          <div className="font-bengali flex flex-wrap items-center justify-center sm:justify-start gap-2">
+            <span>{t.footerCopyright}</span>
+            <span className="text-amber-500/50 hidden sm:inline">•</span>
+            <span className="font-mono text-emerald-400 text-[11px] bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/30">
+              {language === 'bn' ? 'রেজিস্ট্রেশন নং' : 'Reg. No'}: {shopDetails.registrationNo}
+            </span>
           </div>
 
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setIsAdminOpen(true)}
-              className="hover:text-amber-300 transition-colors underline"
-            >
-              {language === 'bn' ? 'ম্যানেজমেন্ট প্যানেল' : 'Owner Admin'}
-            </button>
-            <span>•</span>
             <button
               onClick={scrollToTop}
               className="flex items-center gap-1 hover:text-amber-300 transition-colors"

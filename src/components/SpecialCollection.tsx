@@ -1,6 +1,8 @@
 import React from 'react';
 import { useShop } from '../context/ShopContext';
 import { Crown, Sparkles, Gift, HeartHandshake, ShieldCheck, ShoppingBag } from 'lucide-react';
+import { NutritionTooltip } from './NutritionTooltip';
+import { ScrollReveal } from './ScrollReveal';
 
 export const SpecialCollection: React.FC = () => {
   const { language, theme, products, addToCart, t } = useShop();
@@ -15,7 +17,6 @@ export const SpecialCollection: React.FC = () => {
       titleEn: 'Heritage Special Bengali Sweets',
       descBn: 'ঋতুভিত্তিক খাঁটি খেজুর গুড় ও টাটকা ছানার মিশ্রণে প্রস্তুত অনন্য সৃষ্টি।',
       descEn: 'Seasonal delicacies made of unrefined natural date-palm jaggery and freshly drained chenna.',
-      image: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?q=80&w=800&auto=format&fit=crop',
       badgeBn: 'বাঙালি সংস্কৃতি',
       badgeEn: 'Bengal Heritage'
     },
@@ -24,7 +25,6 @@ export const SpecialCollection: React.FC = () => {
       titleEn: 'Sacred Festival & Puja Offerings',
       descBn: 'দুর্গাপূজা, দীপাবলি, কালীপূজা ও নববর্ষে দেবীর ভোগ ও আত্মীয়দের জন্য নিখুঁত মিষ্টি।',
       descEn: 'Sanctified offerings for Durga Puja, Diwali, and traditional Bengali festivities.',
-      image: 'https://images.unsplash.com/photo-1605197584547-c93de1a3648a?q=80&w=800&auto=format&fit=crop',
       badgeBn: 'পবিত্র ভোগ',
       badgeEn: 'Pure & Holy'
     },
@@ -33,7 +33,6 @@ export const SpecialCollection: React.FC = () => {
       titleEn: 'Fresh Kheer & Malai Items',
       descBn: 'ঘণ্টার পর ঘণ্টা ফুটানো দুধের সর, জাফরান ও ক্ষীরে ডুবানো লোভনীয় পদসমূহ।',
       descEn: 'Slow-simmered rich reduced milk delicacies with royal saffron and silver garnish.',
-      image: 'https://images.unsplash.com/photo-1620801124637-2384a515fce3?q=80&w=800&auto=format&fit=crop',
       badgeBn: 'ঘরোয়া ক্ষীর',
       badgeEn: 'Artisanal Rabdi'
     },
@@ -42,7 +41,6 @@ export const SpecialCollection: React.FC = () => {
       titleEn: 'Luxury Custom Sweet Gift Boxes',
       descBn: 'সোনালী ফয়েল ও কারুকাজ খচিত অভিজাত বক্সে আপনার পছন্দের মিষ্টি সাজিয়ে নিন।',
       descEn: 'Elegantly packaged royal sweet hampers designed for wedding invitations and VIP gifts.',
-      image: 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?q=80&w=800&auto=format&fit=crop',
       badgeBn: 'উপহার বক্স',
       badgeEn: 'Premium Gift'
     }
@@ -56,35 +54,43 @@ export const SpecialCollection: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto mb-14">
-          <div className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full border text-xs font-bold uppercase tracking-wider text-amber-500 border-amber-500/30 bg-amber-500/10 mb-3 font-royal">
-            <Crown className="w-4 h-4 text-amber-500" />
-            <span>{language === 'bn' ? 'রাজকীয় মিষ্টি সংগ্রহ' : 'The Royal Confectionery'}</span>
+        <ScrollReveal direction="up" distance={20} duration={0.6}>
+          <div className="text-center max-w-3xl mx-auto mb-14">
+            <div className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full border text-xs font-bold uppercase tracking-wider text-amber-500 border-amber-500/30 bg-amber-500/10 mb-3 font-royal">
+              <Crown className="w-4 h-4 text-amber-500" />
+              <span>{language === 'bn' ? 'রাজকীয় মিষ্টি সংগ্রহ' : 'The Royal Confectionery'}</span>
+            </div>
+
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
+              {language === 'bn' ? (
+                <span className="font-bengali text-amber-400">
+                  {t.specialTitle}
+                </span>
+              ) : (
+                <span className="font-serif-luxury bg-gradient-to-r from-amber-300 via-amber-400 to-amber-200 bg-clip-text text-transparent">
+                  {t.specialTitle}
+                </span>
+              )}
+            </h2>
+
+            <p className={`text-base max-w-2xl mx-auto ${isDark ? 'text-stone-300 font-bengali' : 'text-stone-600 font-bengali'}`}>
+              {t.specialSubtitle}
+            </p>
           </div>
-
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
-            {language === 'bn' ? (
-              <span className="font-bengali text-amber-400">
-                {t.specialTitle}
-              </span>
-            ) : (
-              <span className="font-serif-luxury bg-gradient-to-r from-amber-300 via-amber-400 to-amber-200 bg-clip-text text-transparent">
-                {t.specialTitle}
-              </span>
-            )}
-          </h2>
-
-          <p className={`text-base max-w-2xl mx-auto ${isDark ? 'text-stone-300 font-bengali' : 'text-stone-600 font-bengali'}`}>
-            {t.specialSubtitle}
-          </p>
-        </div>
+        </ScrollReveal>
 
         {/* 4 Premium Gold Framed Feature Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-16">
           {specialCategories.map((cat, idx) => (
-            <div
+            <ScrollReveal
               key={idx}
-              className={`relative rounded-3xl p-6 border transition-all duration-300 overflow-hidden group flex flex-col sm:flex-row gap-5 items-start sm:items-center ${
+              direction="up"
+              distance={20}
+              delay={idx * 0.08}
+              duration={0.5}
+            >
+            <div
+              className={`relative rounded-3xl p-6 border transition-all duration-300 overflow-hidden group flex flex-col sm:flex-row gap-5 items-start sm:items-center h-full ${
                 isDark
                   ? 'bg-gradient-to-br from-[#241710] to-[#180E08] border-amber-500/30 hover:border-amber-400/70 shadow-2xl shadow-black/60'
                   : 'bg-gradient-to-br from-[#FFFBF7] to-[#F5ECE0] border-amber-800/20 hover:border-amber-500/60 shadow-lg hover:shadow-xl'
@@ -121,30 +127,39 @@ export const SpecialCollection: React.FC = () => {
                 </div>
               </div>
             </div>
+            </ScrollReveal>
           ))}
         </div>
 
         {/* Section C: Dairy and Fresh Raw Essentials (from the Ghosh board) */}
         <div className="mb-14">
-          <div className="flex items-center gap-3 mb-6">
-            <ShieldCheck className="w-6 h-6 text-amber-500" />
-            <div>
-              <h3 className="text-2xl font-bold font-bengali">
-                <span className={isDark ? 'text-amber-300' : 'text-stone-900'}>
-                  {t.dairySectionTitle}
-                </span>
-              </h3>
-              <p className={`text-xs sm:text-sm ${isDark ? 'text-stone-400 font-bengali' : 'text-stone-600 font-bengali'}`}>
-                {t.dairySectionSubtitle}
-              </p>
+          <ScrollReveal direction="up" distance={16} duration={0.5}>
+            <div className="flex items-center gap-3 mb-6">
+              <ShieldCheck className="w-6 h-6 text-amber-500" />
+              <div>
+                <h3 className="text-2xl font-bold font-bengali">
+                  <span className={isDark ? 'text-amber-300' : 'text-stone-900'}>
+                    {t.dairySectionTitle}
+                  </span>
+                </h3>
+                <p className={`text-xs sm:text-sm ${isDark ? 'text-stone-400 font-bengali' : 'text-stone-600 font-bengali'}`}>
+                  {t.dairySectionSubtitle}
+                </p>
+              </div>
             </div>
-          </div>
+          </ScrollReveal>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {dairyProducts.map((item) => (
-              <div
+            {dairyProducts.map((item, dIdx) => (
+              <ScrollReveal
                 key={item.id}
-                className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${
+                direction="up"
+                distance={18}
+                delay={dIdx * 0.06}
+                duration={0.45}
+              >
+              <div
+                className={`p-4 rounded-2xl border transition-all flex items-center justify-between h-full ${
                   isDark
                     ? 'bg-[#1C120B] border-amber-500/20 hover:border-amber-400/40'
                     : 'bg-white border-amber-800/15 hover:border-amber-500/40 shadow-sm hover:shadow'
@@ -160,9 +175,19 @@ export const SpecialCollection: React.FC = () => {
                         {language === 'bn' ? item.nameBn : item.nameEn}
                       </span>
                     </h4>
-                    <span className="text-xs text-amber-500 font-bold block mt-0.5">
-                      ₹{item.price} <span className="text-[10px] opacity-80 font-normal">/ {language === 'bn' ? item.portionBn : item.portionEn}</span>
-                    </span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-xs text-amber-500 font-bold">
+                        ₹{item.price} <span className="text-[10px] opacity-80 font-normal">/ {language === 'bn' ? item.portionBn : item.portionEn}</span>
+                      </span>
+                      {item.nutrition && (
+                        <NutritionTooltip
+                          nutrition={item.nutrition}
+                          language={language}
+                          theme={theme}
+                          itemName={language === 'bn' ? item.nameBn : item.nameEn}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -176,31 +201,41 @@ export const SpecialCollection: React.FC = () => {
                   <ShoppingBag className="w-4 h-4" />
                 </button>
               </div>
+              </ScrollReveal>
             ))}
           </div>
         </div>
 
         {/* Section D: Special Party & Celebration Bulk Boxes */}
         <div>
-          <div className="flex items-center gap-3 mb-6">
-            <Gift className="w-6 h-6 text-amber-500" />
-            <div>
-              <h3 className="text-2xl font-bold font-bengali">
-                <span className={isDark ? 'text-amber-300' : 'text-stone-900'}>
-                  {t.customBoxesTitle}
-                </span>
-              </h3>
-              <p className={`text-xs sm:text-sm ${isDark ? 'text-stone-400 font-bengali' : 'text-stone-600 font-bengali'}`}>
-                {language === 'bn' ? 'অনুষ্ঠান ও উপহারের জন্য প্রস্তুত কাস্টমাইজড বক্স' : 'Curated celebration packages for events and gifts'}
-              </p>
+          <ScrollReveal direction="up" distance={16} duration={0.5}>
+            <div className="flex items-center gap-3 mb-6">
+              <Gift className="w-6 h-6 text-amber-500" />
+              <div>
+                <h3 className="text-2xl font-bold font-bengali">
+                  <span className={isDark ? 'text-amber-300' : 'text-stone-900'}>
+                    {t.customBoxesTitle}
+                  </span>
+                </h3>
+                <p className={`text-xs sm:text-sm ${isDark ? 'text-stone-400 font-bengali' : 'text-stone-600 font-bengali'}`}>
+                  {language === 'bn' ? 'অনুষ্ঠান ও উপহারের জন্য প্রস্তুত কাস্টমাইজড বক্স' : 'Curated celebration packages for events and gifts'}
+                </p>
+              </div>
             </div>
-          </div>
+          </ScrollReveal>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {specialBoxes.map((item) => (
-              <div
+            {specialBoxes.map((item, bIdx) => (
+              <ScrollReveal
                 key={item.id}
-                className={`rounded-2xl p-5 border transition-all flex flex-col justify-between ${
+                direction="up"
+                distance={20}
+                delay={bIdx * 0.08}
+                duration={0.5}
+                className="h-full flex flex-col"
+              >
+              <div
+                className={`rounded-2xl p-5 border transition-all flex flex-col justify-between h-full ${
                   isDark
                     ? 'bg-[#20140D] border-amber-500/25 hover:border-amber-400/60 shadow-lg'
                     : 'bg-white border-amber-800/15 hover:border-amber-500/50 shadow-md'
@@ -228,8 +263,23 @@ export const SpecialCollection: React.FC = () => {
                 </div>
 
                 <div className="pt-3 border-t border-amber-500/15 flex items-center justify-between mt-auto">
-                  <div className="text-xs font-semibold text-amber-500">
-                    {language === 'bn' ? 'অর্ডার করুন' : 'Order Box'}
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-base font-bold text-amber-400">
+                        ₹{item.price}
+                      </span>
+                      <span className="text-[10px] opacity-75">
+                        / {language === 'bn' ? item.portionBn : item.portionEn}
+                      </span>
+                    </div>
+                    {item.nutrition && (
+                      <NutritionTooltip
+                        nutrition={item.nutrition}
+                        language={language}
+                        theme={theme}
+                        itemName={language === 'bn' ? item.nameBn : item.nameEn}
+                      />
+                    )}
                   </div>
                   <button
                     type="button"
@@ -242,6 +292,7 @@ export const SpecialCollection: React.FC = () => {
                   </button>
                 </div>
               </div>
+              </ScrollReveal>
             ))}
           </div>
         </div>

@@ -2,6 +2,7 @@ import React from 'react';
 import { useShop } from '../context/ShopContext';
 import { Sparkles, Utensils, Heart, Award, ShieldCheck, Clock } from 'lucide-react';
 import { GhoshLogo } from './GhoshLogo';
+import { ScrollReveal } from './ScrollReveal';
 
 export const AboutSection: React.FC = () => {
   const { language, theme, t, shopDetails } = useShop();
@@ -47,72 +48,86 @@ export const AboutSection: React.FC = () => {
           
           {/* Image & Visual Showcase */}
           <div className="lg:col-span-5 relative order-2 lg:order-1">
-            <div className="relative rounded-3xl overflow-hidden border-2 border-amber-500/40 shadow-2xl p-2 bg-gradient-to-b from-amber-500/20 to-transparent">
-              <div className="relative rounded-2xl overflow-hidden aspect-[4/5]">
-                <img
-                  src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=900&auto=format&fit=crop"
-                  alt="Ghosh Sweet House Counter and Tradition"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+            <ScrollReveal direction="left" distance={24} duration={0.6}>
+              <div className="relative rounded-3xl overflow-hidden border-2 border-amber-500/40 shadow-2xl p-2 bg-gradient-to-b from-amber-500/20 to-transparent">
+                <div className="relative rounded-2xl overflow-hidden aspect-[4/5]">
+                  <img
+                    src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=900&auto=format&fit=crop"
+                    alt="Ghosh Sweet House Counter and Tradition"
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-                {/* Overlaid Logo in Corner */}
-                <div className="absolute bottom-6 left-6 right-6 p-4 rounded-2xl bg-stone-950/85 backdrop-blur-md border border-amber-500/40 text-center">
-                  <GhoshLogo variant="compact" theme="dark" className="justify-center mb-2" />
-                  <p className="font-bengali text-xs text-amber-300">
-                    {language === 'bn'
-                      ? 'দুইসাটাবিঘি, কালিয়াচক, মালদা — আপনার বিশ্বস্ত মিষ্টির আলয়'
-                      : 'Duisatabighi, Kaliachak, Malda — Serving authentic Bengali sweetness'}
-                  </p>
+                  {/* Overlaid Logo in Corner */}
+                  <div className="absolute bottom-6 left-6 right-6 p-4 rounded-2xl bg-stone-950/85 backdrop-blur-md border border-amber-500/40 text-center">
+                    <GhoshLogo variant="compact" theme="dark" className="justify-center mb-2" />
+                    <p className="font-bengali text-xs text-amber-300">
+                      {language === 'bn'
+                        ? 'দুইসাটাবিঘি, কালিয়াচক, মালদা — আপনার বিশ্বস্ত মিষ্টির আলয়'
+                        : 'Duisatabighi, Kaliachak, Malda — Serving authentic Bengali sweetness'}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            </ScrollReveal>
           </div>
 
           {/* Story Text */}
           <div className="lg:col-span-7 text-left order-1 lg:order-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider text-amber-500 border-amber-500/30 bg-amber-500/10 mb-3 font-royal">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{t.aboutSubtitle}</span>
-            </div>
+            <ScrollReveal direction="right" distance={24} duration={0.6}>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider text-amber-500 border-amber-500/30 bg-amber-500/10 mb-3 font-royal">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{t.aboutSubtitle}</span>
+              </div>
 
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6">
-              {language === 'bn' ? (
-                <span className="font-bengali text-amber-400">
-                  {t.aboutTitle}
-                </span>
-              ) : (
-                <span className="font-serif-luxury bg-gradient-to-r from-amber-300 via-amber-400 to-amber-200 bg-clip-text text-transparent">
-                  {t.aboutTitle}
-                </span>
-              )}
-            </h2>
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6">
+                {language === 'bn' ? (
+                  <span className="font-bengali text-amber-400">
+                    {t.aboutTitle}
+                  </span>
+                ) : (
+                  <span className="font-serif-luxury bg-gradient-to-r from-amber-300 via-amber-400 to-amber-200 bg-clip-text text-transparent">
+                    {t.aboutTitle}
+                  </span>
+                )}
+              </h2>
 
-            {/* Prompt exact text */}
-            <div className={`text-base sm:text-lg leading-relaxed space-y-4 mb-8 font-bengali ${
-              isDark ? 'text-amber-100/90' : 'text-stone-700'
-            }`}>
-              <p className="p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 italic leading-relaxed">
-                “{language === 'bn' ? t.aboutParagraph : t.aboutParagraph}”
-              </p>
-              <p className="text-sm sm:text-base leading-relaxed">
-                {language === 'bn'
-                  ? 'মালদার কালিয়াচকের দুইসাটাবিঘিতে অবস্থিত ঘোষ মিষ্টান্ন ভাণ্ডার প্রতিটি গ্রাহকের কাছে পৌঁছে দিচ্ছে বাংলার খাঁটি মালাই, রসগোল্লা, ক্ষীর ও গরম গরম জলখাবারের অপূর্ব স্বাদ। আমাদের মূল লক্ষ্য শুদ্ধতা, তাজা প্রস্তুতি ও বিশ্বস্ত সেবা।'
-                  : 'Located at Duisatabighi, Kaliachak, Malda, Ghosh Sweet House is proud to share the pinnacle of traditional Bengali confections with you and your loved ones.'}
-              </p>
-            </div>
+              {/* Prompt exact text */}
+              <div className={`text-base sm:text-lg leading-relaxed space-y-4 mb-8 font-bengali ${
+                isDark ? 'text-amber-100/90' : 'text-stone-700'
+              }`}>
+                <p className="p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 italic leading-relaxed">
+                  “{language === 'bn' ? t.aboutParagraph : t.aboutParagraph}”
+                </p>
+                <p className="text-sm sm:text-base leading-relaxed">
+                  {language === 'bn'
+                    ? 'মালদার কালিয়াচকের দুইসাটাবিঘিতে অবস্থিত ঘোষ মিষ্টান্ন ভাণ্ডার প্রতিটি গ্রাহকের কাছে পৌঁছে দিচ্ছে বাংলার খাঁটি মালাই, রসগোল্লা, ক্ষীর ও গরম গরম জলখাবারের অপূর্ব স্বাদ। আমাদের মূল লক্ষ্য শুদ্ধতা, তাজা প্রস্তুতি ও বিশ্বস্ত সেবা।'
+                    : 'Located at Duisatabighi, Kaliachak, Malda, Ghosh Sweet House is proud to share the pinnacle of traditional Bengali confections with you and your loved ones.'}
+                </p>
+              </div>
 
-            {/* Direct Phone Highlight */}
-            <div className="flex items-center gap-3">
-              <a
-                href={`tel:${shopDetails.phone}`}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow-md transition-all"
-              >
-                <Award className="w-4 h-4" />
-                <span>{language === 'bn' ? 'সরাসরি যোগাযোগ: ৯৭৩৩৩৬৩৫৬২' : `Call Us: ${shopDetails.phone}`}</span>
-              </a>
-            </div>
+              {/* Direct Phone Highlight & MSME Registration */}
+              <div className="flex flex-wrap items-center gap-3">
+                <a
+                  href={`tel:${shopDetails.phone}`}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow-md transition-all"
+                >
+                  <Award className="w-4 h-4" />
+                  <span>{language === 'bn' ? 'সরাসরি যোগাযোগ: ৯৭৩৩৩৬৩৫৬২' : `Call Us: ${shopDetails.phone}`}</span>
+                </a>
+
+                <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-500/30 bg-emerald-950/30 text-xs font-mono text-emerald-300">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                  <div>
+                    <span className="text-[10px] uppercase font-sans font-bold text-emerald-400/90 block">
+                      {language === 'bn' ? 'সরকারি উদ্যোগ রেজিঃ' : 'Govt. MSME Reg.'}
+                    </span>
+                    <span>{shopDetails.registrationNo}</span>
+                  </div>
+                </div>
+              </div>
+            </ScrollReveal>
           </div>
 
         </div>
@@ -122,9 +137,16 @@ export const AboutSection: React.FC = () => {
           {pillars.map((item, idx) => {
             const Icon = item.icon;
             return (
-              <div
+              <ScrollReveal
                 key={idx}
-                className={`p-6 rounded-3xl border transition-all duration-300 flex flex-col justify-between ${
+                direction="up"
+                distance={20}
+                delay={idx * 0.08}
+                duration={0.5}
+                className="h-full flex flex-col"
+              >
+              <div
+                className={`p-6 rounded-3xl border transition-all duration-300 flex flex-col justify-between h-full ${
                   isDark
                     ? 'bg-[#1C120B] border-amber-500/20 hover:border-amber-400/50 shadow-xl'
                     : 'bg-white border-amber-800/15 hover:border-amber-500/50 shadow-md'
@@ -145,6 +167,7 @@ export const AboutSection: React.FC = () => {
                   </p>
                 </div>
               </div>
+              </ScrollReveal>
             );
           })}
         </div>

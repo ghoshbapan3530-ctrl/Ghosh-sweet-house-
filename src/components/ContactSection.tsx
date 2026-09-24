@@ -1,7 +1,8 @@
 import React from 'react';
 import { useShop } from '../context/ShopContext';
-import { MapPin, Phone, MessageSquare, Clock, Navigation, Sparkles } from 'lucide-react';
+import { MapPin, Phone, CheckCircle2, Clock, Navigation, Sparkles, ShieldCheck } from 'lucide-react';
 import { GhoshLogo } from './GhoshLogo';
+import { ScrollReveal } from './ScrollReveal';
 
 export const ContactSection: React.FC = () => {
   const { language, theme, shopDetails, t } = useShop();
@@ -12,37 +13,39 @@ export const ContactSection: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header */}
-        <div className="text-center max-w-3xl mx-auto mb-14">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider text-amber-500 border-amber-500/30 bg-amber-500/10 mb-3 font-royal">
-            <MapPin className="w-3.5 h-3.5" />
-            <span>{language === 'bn' ? 'আমাদের অবস্থান' : 'Visit Our Sweet Counter'}</span>
+        <ScrollReveal direction="up" distance={20} duration={0.6}>
+          <div className="text-center max-w-3xl mx-auto mb-14">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider text-amber-500 border-amber-500/30 bg-amber-500/10 mb-3 font-royal">
+              <MapPin className="w-3.5 h-3.5" />
+              <span>{language === 'bn' ? 'আমাদের অবস্থান' : 'Visit Our Sweet Counter'}</span>
+            </div>
+
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3">
+              {language === 'bn' ? (
+                <span className="font-bengali text-amber-400">
+                  {t.contactTitle}
+                </span>
+              ) : (
+                <span className="font-serif-luxury bg-gradient-to-r from-amber-300 via-amber-400 to-amber-200 bg-clip-text text-transparent">
+                  {t.contactTitle}
+                </span>
+              )}
+            </h2>
+
+            <p className={`text-sm sm:text-base ${isDark ? 'text-stone-300 font-bengali' : 'text-stone-600 font-bengali'}`}>
+              {language === 'bn' ? 'দুইসাটাবিঘি, কালিয়াচক, মালদা, পশ্চিমবঙ্গ' : 'Duisatabighi, Kaliachak, Malda, West Bengal, India'}
+            </p>
           </div>
-
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3">
-            {language === 'bn' ? (
-              <span className="font-bengali text-amber-400">
-                {t.contactTitle}
-              </span>
-            ) : (
-              <span className="font-serif-luxury bg-gradient-to-r from-amber-300 via-amber-400 to-amber-200 bg-clip-text text-transparent">
-                {t.contactTitle}
-              </span>
-            )}
-          </h2>
-
-          <p className={`text-sm sm:text-base ${isDark ? 'text-stone-300 font-bengali' : 'text-stone-600 font-bengali'}`}>
-            {language === 'bn' ? 'দুইসাটাবিঘি, কালিয়াচক, মালদা, পশ্চিমবঙ্গ' : 'Duisatabighi, Kaliachak, Malda, West Bengal, India'}
-          </p>
-        </div>
+        </ScrollReveal>
 
         {/* Contact Grid: Info Cards + Live Map */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           
           {/* Left Info Panel */}
           <div className="lg:col-span-5 flex flex-col justify-between space-y-6">
-            
+            <ScrollReveal direction="left" distance={24} duration={0.6}>
             {/* Shop Brand Card */}
-            <div className={`p-6 rounded-3xl border ${
+            <div className={`p-6 rounded-3xl border mb-6 ${
               isDark ? 'bg-[#1E130C] border-amber-500/25' : 'bg-white border-amber-850/15 shadow-md'
             }`}>
               <GhoshLogo variant="compact" theme={theme} className="mb-4" />
@@ -66,7 +69,7 @@ export const ContactSection: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Phone & WhatsApp */}
+                {/* Phone & Direct Orders */}
                 <div className="flex items-start gap-3.5">
                   <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500 flex-shrink-0">
                     <Phone className="w-5 h-5" />
@@ -82,8 +85,8 @@ export const ContactSection: React.FC = () => {
                       {shopDetails.phone}
                     </a>
                     <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      <span>WhatsApp Enabled</span>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{language === 'bn' ? 'সরাসরি গুগল শিটসে অর্ডার নথিবদ্ধ' : 'Orders Directly Sent to Google Sheets'}</span>
                     </span>
                   </div>
                 </div>
@@ -102,6 +105,24 @@ export const ContactSection: React.FC = () => {
                     </p>
                     <span className="text-[11px] text-amber-500/80 font-medium">
                       {language === 'bn' ? 'সপ্তাহের সাত দিনই খোলা' : 'Open all 7 days a week'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Govt. Shop Registration No */}
+                <div className="flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs uppercase font-bold text-amber-500 mb-0.5">
+                      {language === 'bn' ? 'সরকারি শপ রেজিস্ট্রেশন নং' : 'Govt. Registration No.'}
+                    </h4>
+                    <p className="text-sm font-bold font-mono text-emerald-400 tracking-wider">
+                      {shopDetails.registrationNo}
+                    </p>
+                    <span className="text-[11px] text-stone-400 font-medium">
+                      {language === 'bn' ? 'ভারত সরকার MSME উদ্যোগ রেজিস্টার্ড' : 'Govt. of India MSME Udyam Certified'}
                     </span>
                   </div>
                 </div>
@@ -132,11 +153,13 @@ export const ContactSection: React.FC = () => {
                 <span>{t.ctaGetDirections}</span>
               </a>
             </div>
+            </ScrollReveal>
 
           </div>
 
           {/* Right Map Panel */}
           <div className="lg:col-span-7">
+            <ScrollReveal direction="right" distance={24} duration={0.6} className="h-full">
             <div className={`h-full min-h-[380px] rounded-3xl overflow-hidden border relative flex flex-col justify-between ${
               isDark ? 'border-amber-500/30 bg-stone-900' : 'border-amber-800/20 bg-stone-100 shadow-md'
             }`}>
@@ -171,6 +194,7 @@ export const ContactSection: React.FC = () => {
                 </a>
               </div>
             </div>
+            </ScrollReveal>
           </div>
 
         </div>

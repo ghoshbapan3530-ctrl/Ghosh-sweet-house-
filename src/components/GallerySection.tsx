@@ -3,6 +3,7 @@ import { useShop } from '../context/ShopContext';
 import { initialGallery } from '../data/initialData';
 import { Sparkles, ZoomIn, X } from 'lucide-react';
 import { GalleryItem } from '../types';
+import { ScrollReveal } from './ScrollReveal';
 
 export const GallerySection: React.FC = () => {
   const { language, theme, t } = useShop();
@@ -30,67 +31,78 @@ export const GallerySection: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header */}
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider text-amber-500 border-amber-500/30 bg-amber-500/10 mb-3 font-royal">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{language === 'bn' ? 'দৃশ্যপট' : 'Visual Gallery'}</span>
+        <ScrollReveal direction="up" distance={20} duration={0.6}>
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold uppercase tracking-wider text-amber-500 border-amber-500/30 bg-amber-500/10 mb-3 font-royal">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{language === 'bn' ? 'দৃশ্যপট' : 'Visual Gallery'}</span>
+            </div>
+
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3">
+              {language === 'bn' ? (
+                <span className="font-bengali text-amber-400">
+                  {t.galleryTitle}
+                </span>
+              ) : (
+                <span className="font-serif-luxury bg-gradient-to-r from-amber-300 via-amber-400 to-amber-200 bg-clip-text text-transparent">
+                  {t.galleryTitle}
+                </span>
+              )}
+            </h2>
+
+            <p className={`text-sm sm:text-base ${isDark ? 'text-stone-300 font-bengali' : 'text-stone-600 font-bengali'}`}>
+              {t.gallerySubtitle}
+            </p>
+
+            {/* Filter tabs */}
+            <div className="flex flex-wrap justify-center gap-2 mt-6">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${
+                    activeTab === tab.id
+                      ? 'bg-amber-500 text-stone-950 font-bold shadow-md'
+                      : isDark
+                      ? 'bg-stone-900 border border-amber-500/20 text-stone-300 hover:border-amber-400'
+                      : 'bg-amber-100/60 border border-amber-900/20 text-stone-800 hover:bg-amber-200/50'
+                  }`}
+                >
+                  {tab.icon && <span>{tab.icon}</span>}
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
-
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3">
-            {language === 'bn' ? (
-              <span className="font-bengali text-amber-400">
-                {t.galleryTitle}
-              </span>
-            ) : (
-              <span className="font-serif-luxury bg-gradient-to-r from-amber-300 via-amber-400 to-amber-200 bg-clip-text text-transparent">
-                {t.galleryTitle}
-              </span>
-            )}
-          </h2>
-
-          <p className={`text-sm sm:text-base ${isDark ? 'text-stone-300 font-bengali' : 'text-stone-600 font-bengali'}`}>
-            {t.gallerySubtitle}
-          </p>
-
-          {/* Filter tabs */}
-          <div className="flex flex-wrap justify-center gap-2 mt-6">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${
-                  activeTab === tab.id
-                    ? 'bg-amber-500 text-stone-950 font-bold shadow-md'
-                    : isDark
-                    ? 'bg-stone-900 border border-amber-500/20 text-stone-300 hover:border-amber-400'
-                    : 'bg-amber-100/60 border border-amber-900/20 text-stone-800 hover:bg-amber-200/50'
-                }`}
-              >
-                {tab.icon && <span>{tab.icon}</span>}
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        </ScrollReveal>
 
         {/* Masonry / Grid Gallery */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {filteredItems.map((item, index) => (
-            <div
+            <ScrollReveal
               key={item.id}
+              direction="up"
+              distance={20}
+              delay={(index % 4) * 0.07}
+              duration={0.5}
+              className={index % 3 === 0 ? 'sm:col-span-2' : ''}
+            >
+            <div
               onClick={() => setSelectedImage(item)}
-              className={`group relative rounded-2xl overflow-hidden cursor-pointer border transition-all duration-300 ${
-                index % 3 === 0 ? 'sm:col-span-2 aspect-[16/10]' : 'aspect-square'
+              className={`group relative rounded-2xl overflow-hidden cursor-pointer border transition-all duration-300 h-full ${
+                index % 3 === 0 ? 'aspect-[16/10]' : 'aspect-square'
               } ${
                 isDark ? 'border-amber-500/20 shadow-xl' : 'border-amber-800/15 shadow-md'
               }`}
             >
-              <img
-                src={item.image}
-                alt={item.titleBn}
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
-              />
+              {item.image && (
+                <img
+                  src={item.image}
+                  alt={item.titleBn}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
+                />
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent opacity-70 group-hover:opacity-90 transition-opacity" />
 
               {/* Hover Zoom Icon */}
@@ -108,6 +120,7 @@ export const GallerySection: React.FC = () => {
                 </span>
               </div>
             </div>
+            </ScrollReveal>
           ))}
         </div>
 
@@ -129,12 +142,14 @@ export const GallerySection: React.FC = () => {
             >
               <X className="w-6 h-6" />
             </button>
-            <img
-              src={selectedImage.image}
-              alt={selectedImage.titleBn}
-              referrerPolicy="no-referrer"
-              className="w-full max-h-[75vh] object-contain rounded-2xl"
-            />
+            {selectedImage.image && (
+              <img
+                src={selectedImage.image}
+                alt={selectedImage.titleBn}
+                referrerPolicy="no-referrer"
+                className="w-full max-h-[75vh] object-contain rounded-2xl"
+              />
+            )}
             <div className="p-4 text-center">
               <h3 className="text-xl font-bold font-bengali text-amber-300">
                 {language === 'bn' ? selectedImage.titleBn : selectedImage.titleEn}

@@ -1,16 +1,10 @@
 import React from 'react';
 import { useShop } from '../context/ShopContext';
-import { Phone, MessageSquare, MapPin, Sparkles, Heart } from 'lucide-react';
+import { Phone, ShoppingBag, MapPin, Sparkles, Heart } from 'lucide-react';
 
 export const OrderCTA: React.FC = () => {
   const { language, theme, shopDetails, t } = useShop();
   const isDark = theme === 'dark';
-
-  const defaultWhatsappMessage = language === 'bn'
-    ? 'নমস্কার, আমি ঘোষ মিষ্টান্ন ভাণ্ডার থেকে তাজা মিষ্টি ও জলখাবার অর্ডার করতে চাই।'
-    : 'Hello! I would like to order fresh sweets from Ghosh Sweet House.';
-
-  const whatsappUrl = `https://wa.me/${shopDetails.whatsapp}?text=${encodeURIComponent(defaultWhatsappMessage)}`;
 
   return (
     <section className="py-14 md:py-20 relative overflow-hidden">
@@ -50,15 +44,13 @@ export const OrderCTA: React.FC = () => {
 
             {/* High-conversion 3 Main Buttons */}
             <div className="flex flex-wrap items-center justify-center gap-4">
-              {/* WhatsApp Button */}
+              {/* Direct Online Order Button */}
               <a
-                href={whatsappUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                id="cta-whatsapp-order"
-                className="flex items-center justify-center gap-2.5 px-7 py-4 rounded-full font-bold text-sm sm:text-base bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-950/30 active:scale-95 transition-all"
+                href="#sweets-menu"
+                id="cta-direct-order"
+                className="flex items-center justify-center gap-2.5 px-7 py-4 rounded-full font-bold text-sm sm:text-base bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow-xl shadow-amber-950/30 active:scale-95 transition-all"
               >
-                <MessageSquare className="w-5 h-5 fill-white" />
+                <ShoppingBag className="w-5 h-5 fill-stone-950" />
                 <span>{t.ctaWhatsApp}</span>
               </a>
 
@@ -66,9 +58,13 @@ export const OrderCTA: React.FC = () => {
               <a
                 href={`tel:${shopDetails.phone}`}
                 id="cta-call-direct"
-                className="flex items-center justify-center gap-2.5 px-7 py-4 rounded-full font-bold text-sm sm:text-base bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow-xl shadow-amber-950/30 active:scale-95 transition-all"
+                className={`flex items-center justify-center gap-2.5 px-7 py-4 rounded-full font-bold text-sm sm:text-base border transition-all ${
+                  isDark
+                    ? 'border-amber-500/40 text-amber-300 hover:bg-amber-950/40'
+                    : 'border-amber-800/30 text-amber-950 hover:bg-amber-100'
+                }`}
               >
-                <Phone className="w-5 h-5 fill-stone-950" />
+                <Phone className="w-5 h-5 text-amber-500" />
                 <span>{t.ctaCallNow} ({shopDetails.phone})</span>
               </a>
 

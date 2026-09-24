@@ -3,26 +3,29 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
+import { googleSheetsSyncPlugin } from './src/server/googleSheetsPlugin';
 
 export default defineConfig(() => {
   return {
     plugins: [
       react(),
       tailwindcss(),
+      googleSheetsSyncPlugin(),
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['favicon.png', 'apple-touch-icon.png', 'icon.svg'],
         manifest: {
           id: '/',
-          name: 'Ghosh Sweet House | ঘোষ মিষ্টান্ন ভাণ্ডার',
+          name: 'Ghosh Sweet House',
           short_name: 'Ghosh Sweet',
-          description: 'Traditional authentic Bengali sweets & fresh snacks from Duisatabighi, Kaliachak, Malda.',
+          description: 'Ghosh Sweet House online sweets and food ordering - authentic Bengali sweets and fresh snacks from Malda, West Bengal.',
           theme_color: '#150D08',
           background_color: '#150D08',
           display: 'standalone',
-          orientation: 'portrait-primary',
+          orientation: 'portrait',
           start_url: '/',
           scope: '/',
+          prefer_related_applications: false,
           icons: [
             {
               src: '/pwa-192x192.png',
@@ -78,8 +81,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
       }),
     ],
@@ -87,6 +89,7 @@ export default defineConfig(() => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+      dedupe: ['react', 'react-dom'],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

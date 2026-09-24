@@ -1,6 +1,6 @@
 {
   "name": "Ghosh Sweet House",
-  "description": "ঘোষ মিষ্টান্ন ভাণ্ডার - Ultra-premium authentic Bengali sweets and freshly prepared snacks in Malda, West Bengal.",
+  "description": "Ghosh Sweet House online sweets and food ordering - authentic Bengali sweets and fresh snacks from Malda, West Bengal. Installable Android Progressive Web App.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

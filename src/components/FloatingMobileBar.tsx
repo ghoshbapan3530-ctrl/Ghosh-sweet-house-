@@ -1,30 +1,30 @@
 import React from 'react';
 import { useShop } from '../context/ShopContext';
-import { MessageSquare, Phone, ShoppingBag, Download } from 'lucide-react';
+import { UtensilsCrossed, Phone, ShoppingBag, Sparkles, Gift } from 'lucide-react';
 
 export const FloatingMobileBar: React.FC = () => {
-  const { language, theme, cartCount, setIsCartOpen, setIsInstallModalOpen, shopDetails, t } = useShop();
-  const isDark = theme === 'dark';
-
-  const defaultMsg = language === 'bn'
-    ? 'নমস্কার, আমি ঘোষ মিষ্টান্ন ভাণ্ডার থেকে মিষ্টি অর্ডার করতে চাই।'
-    : 'Hello, I would like to place a sweet order with Ghosh Sweet House.';
-
-  const whatsappUrl = `https://wa.me/${shopDetails.whatsapp}?text=${encodeURIComponent(defaultMsg)}`;
+  const {
+    language,
+    cartCount,
+    setIsCartOpen,
+    currentCustomer,
+    openSignUpModal,
+    setIsDashboardOpen,
+    sweetPoints,
+    shopDetails
+  } = useShop();
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 xl:hidden p-2.5 bg-[#180E08]/95 dark:bg-[#120A05]/95 backdrop-blur-lg border-t border-amber-500/30 shadow-2xl">
+    <div className="fixed bottom-0 left-0 right-0 z-40 xl:hidden px-2.5 pt-2 pb-[calc(0.6rem+env(safe-area-inset-bottom,0px))] bg-[#180E08]/95 dark:bg-[#120A05]/95 backdrop-blur-lg border-t border-amber-500/30 shadow-2xl">
       <div className="max-w-md mx-auto grid grid-cols-4 gap-1.5 sm:gap-2">
-        {/* WhatsApp Button */}
+        {/* Menu & Sweets Button */}
         <a
-          href={whatsappUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          id="mobile-bottom-whatsapp"
-          className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow transition-all active:scale-95 text-center"
+          href="#sweets-menu"
+          id="mobile-bottom-menu"
+          className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-stone-950 font-bold text-[11px] shadow transition-all active:scale-95 text-center"
         >
-          <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" />
-          <span className="truncate">WhatsApp</span>
+          <UtensilsCrossed className="w-3.5 h-3.5 flex-shrink-0 text-stone-950" />
+          <span className="truncate">{language === 'bn' ? 'মিষ্টি মেনু' : 'Menu'}</span>
         </a>
 
         {/* Call Button */}
@@ -37,15 +37,24 @@ export const FloatingMobileBar: React.FC = () => {
           <span className="truncate">{language === 'bn' ? 'কল' : 'Call'}</span>
         </a>
 
-        {/* App / APK Install Button */}
+        {/* Sweet Points & Loyalty Dashboard Button */}
         <button
           type="button"
-          onClick={() => setIsInstallModalOpen(true)}
-          id="mobile-bottom-apk"
-          className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl bg-stone-800 hover:bg-stone-700 text-emerald-300 border border-emerald-500/30 font-bold text-[11px] shadow transition-all active:scale-95 text-center"
+          onClick={currentCustomer ? () => setIsDashboardOpen(true) : openSignUpModal}
+          id="mobile-bottom-points"
+          className="relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl bg-stone-800 hover:bg-stone-700 text-amber-300 border border-amber-500/30 font-bold text-[11px] shadow transition-all active:scale-95 text-center"
         >
-          <Download className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" />
-          <span className="truncate">{language === 'bn' ? 'APK' : 'APK'}</span>
+          {currentCustomer ? (
+            <>
+              <Sparkles className="w-3.5 h-3.5 flex-shrink-0 text-amber-400" />
+              <span className="truncate font-mono">{sweetPoints} pts</span>
+            </>
+          ) : (
+            <>
+              <Gift className="w-3.5 h-3.5 flex-shrink-0 text-amber-400 animate-bounce" />
+              <span className="truncate text-amber-300">{language === 'bn' ? '১০ পয়েন্ট' : '+10 Pts'}</span>
+            </>
+          )}
         </button>
 
         {/* Order Cart Button */}
@@ -67,4 +76,5 @@ export const FloatingMobileBar: React.FC = () => {
     </div>
   );
 };
+
 
