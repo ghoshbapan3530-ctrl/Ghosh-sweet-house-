@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useShop } from '../context/ShopContext';
 import { GhoshLogo } from './GhoshLogo';
 import { ShoppingBag, Sun, Moon, Menu, X, Phone, MapPin, Sparkles, Gift, User, Award, ShieldCheck, Clock, Shield } from 'lucide-react';
@@ -11,6 +11,7 @@ export const Navbar: React.FC = () => {
     theme,
     toggleTheme,
     cartCount,
+    lastCartAddedAt,
     setIsCartOpen,
     currentCustomer,
     openSignUpModal,
@@ -22,10 +23,40 @@ export const Navbar: React.FC = () => {
     shopDetails,
     setIsOwnerPortalOpen,
     setTrackingOrderId,
-    setIsOrdersOpen
+    setIsOrdersOpen,
+    open3DViewer
   } = useShop();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isCartShaking, setIsCartShaking] = useState(false);
+  const prevCartCountRef = useRef(cartCount);
+  const prevLastCartAddedAtRef = useRef(lastCartAddedAt);
+  const isMountedRef = useRef(false);
+
+  // Trigger subtle shake animation on the Cart icon whenever a new item is added
+  useEffect(() => {
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      prevCartCountRef.current = cartCount;
+      prevLastCartAddedAtRef.current = lastCartAddedAt;
+      return;
+    }
+
+    const hasNewItemBeenAdded =
+      (lastCartAddedAt > 0 && lastCartAddedAt !== prevLastCartAddedAtRef.current) ||
+      cartCount > prevCartCountRef.current;
+
+    prevCartCountRef.current = cartCount;
+    prevLastCartAddedAtRef.current = lastCartAddedAt;
+
+    if (hasNewItemBeenAdded) {
+      setIsCartShaking(true);
+      const timer = setTimeout(() => {
+        setIsCartShaking(false);
+      }, 750);
+      return () => clearTimeout(timer);
+    }
+  }, [cartCount, lastCartAddedAt]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -37,6 +68,7 @@ export const Navbar: React.FC = () => {
 
   const navLinks = [
     { href: '#home', label: t.navHome },
+    { href: '#sweet-box-3d', label: language === 'bn' ? '৩ডি মিষ্টি বক্স' : '3D Sweet Box' },
     { href: '#festivals', label: language === 'bn' ? 'শারদীয় দুর্গোৎসব' : 'Durga Puja' },
     { href: '#bestsellers', label: t.bestSellersTitle },
     { href: '#sweets', label: t.navSweets },
@@ -234,6 +266,17 @@ export const Navbar: React.FC = () => {
               </button>
             </div>
 
+            {/* 3D Model Studio Quick Button */}
+            <button
+              type="button"
+              onClick={() => open3DViewer('rasgulla')}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full border border-amber-400/50 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
+              title={language === 'bn' ? '৩৬০° ৩ডি মিষ্টি পরিদর্শন স্টুডিও' : '3D Sweet Inspection Studio'}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              <span>3D</span>
+            </button>
+
             {/* Theme Toggle (🌙 DARK | ☀️ BRIGHT) */}
             <button
               type="button"
@@ -293,12 +336,25 @@ export const Navbar: React.FC = () => {
               type="button"
               onClick={() => setIsCartOpen(true)}
               id="header-order-btn"
-              className="relative flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full font-semibold text-xs sm:text-sm bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 hover:from-amber-400 hover:to-amber-500 shadow-md hover:shadow-amber-500/20 transition-all duration-200 active:scale-95"
+              className={`relative flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full font-semibold text-xs sm:text-sm bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 hover:from-amber-400 hover:to-amber-500 shadow-md hover:shadow-amber-500/20 transition-all duration-300 active:scale-95 ${
+                isCartShaking ? 'ring-2 ring-amber-300 shadow-lg shadow-amber-400/50 scale-105' : ''
+              }`}
+              aria-label={`Cart contains ${cartCount} items`}
             >
-              <ShoppingBag className="w-4 h-4 text-stone-950" />
+              <ShoppingBag
+                key={isCartShaking ? `cart-icon-shake-${lastCartAddedAt || cartCount}` : 'cart-icon-idle'}
+                className={`w-4 h-4 text-stone-950 transition-transform ${
+                  isCartShaking ? 'animate-cart-shake' : ''
+                }`}
+              />
               <span className="hidden xs:inline">{t.navOrderNow}</span>
               {cartCount > 0 && (
-                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-stone-950 text-amber-300 font-bold text-xs">
+                <span
+                  key={isCartShaking ? `cart-badge-pop-${cartCount}` : 'cart-badge-idle'}
+                  className={`flex items-center justify-center w-5 h-5 rounded-full bg-stone-950 text-amber-300 font-bold text-xs ${
+                    isCartShaking ? 'animate-badge-pop bg-amber-950 text-amber-200 ring-2 ring-amber-400 shadow-sm' : ''
+                  }`}
+                >
                   {cartCount}
                 </span>
               )}
@@ -331,27 +387,44 @@ export const Navbar: React.FC = () => {
           }`}
         >
           <div className="flex flex-col space-y-2">
-            {/* Mobile Prominent Sign Up or Dashboard Banner */}
+            {/* Mobile Prominent Sign Up & OTP Login Banner */}
             {!currentCustomer ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  openSignUpModal();
-                }}
-                className="flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 font-bold text-sm shadow-md mb-1"
-                id="mobile-signup-btn"
-              >
-                <div className="flex items-center gap-2">
-                  <Gift className="w-4 h-4" />
-                  <span>
-                    {language === 'bn' ? 'সাইন আপ ও মিষ্টি পয়েন্টস অর্জন' : 'Sign Up & Get Sweet Points'}
+              <div className="space-y-1.5 mb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    openSignUpModal();
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 font-bold text-sm shadow-md"
+                  id="mobile-signup-btn"
+                >
+                  <div className="flex items-center gap-2">
+                    <Gift className="w-4 h-4" />
+                    <span>
+                      {language === 'bn' ? 'সাইন আপ ও মিষ্টি পয়েন্টস' : 'Sign Up & Get Points'}
+                    </span>
+                  </div>
+                  <span className="bg-stone-950 text-amber-300 px-2.5 py-0.5 rounded-full text-xs font-extrabold">
+                    +10 Pts
                   </span>
-                </div>
-                <span className="bg-stone-950 text-amber-300 px-2.5 py-0.5 rounded-full text-xs font-extrabold">
-                  +10 Pts
-                </span>
-              </button>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    openLoginModal();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl bg-amber-500/15 border border-amber-500/35 hover:bg-amber-500/25 text-amber-300 font-bold text-xs shadow-sm transition-all"
+                  id="mobile-otp-login-btn"
+                >
+                  <ShieldCheck className="w-4 h-4 text-amber-400" />
+                  <span>
+                    {language === 'bn' ? 'মোবাইল ওটিপি দিয়ে লগইন করুন (OTP Login)' : 'Log In with Mobile OTP'}
+                  </span>
+                </button>
+              </div>
             ) : (
               <button
                 type="button"

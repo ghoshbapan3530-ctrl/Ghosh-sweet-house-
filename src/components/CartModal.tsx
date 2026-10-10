@@ -17,10 +17,14 @@ import {
   AlertCircle,
   RefreshCw,
   Printer,
-  Sparkles
+  Sparkles,
+  Send,
+  ExternalLink
 } from 'lucide-react';
 import { NutritionTooltip } from './NutritionTooltip';
 import { OrderTimestamp } from './OrderTimestamp';
+import { InvoiceModal } from './InvoiceModal';
+import { sendTelegramOrderNotification, getDirectTelegramOrderLink } from '../services/telegramService';
 import {
   createFirestoreOrder,
   generateOrderId,
@@ -30,9 +34,10 @@ import {
   subscribeToOwnerSettings,
   OwnerSettings,
   DEFAULT_OWNER_SETTINGS,
-  FirebaseOrder
+  FirebaseOrder,
+  calculateTotalsViaServer,
+  verifyOnlinePaymentViaServer
 } from '../lib/firestore-orders';
-import { syncOrderToServerSheets } from '../services/sheetsSyncService';
 
 export const CartModal: React.FC = () => {
   const {
@@ -49,6 +54,7 @@ export const CartModal: React.FC = () => {
     t,
     currentCustomer,
     openSignUpModal,
+    openLoginModal,
     addOrderToHistory,
     setTrackingOrderId
   } = useShop();
@@ -75,6 +81,7 @@ export const CartModal: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [placedOrder, setPlacedOrder] = useState<FirebaseOrder | null>(null);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
   // Subscribe to live owner delivery settings
   useEffect(() => {
@@ -131,7 +138,18 @@ export const CartModal: React.FC = () => {
   // Confirm and Place Order
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return; // Prevent duplicate submissions when tapped multiple times
     setErrorMessage(null);
+
+    // Cart Validation
+    if (!cart || cart.length === 0) {
+      setErrorMessage(
+        language === 'bn'
+          ? 'আপনার কার্ট খালি। অনুগ্রহ করে মেনু থেকে মিষ্টি যোগ করুন।'
+          : 'Your cart is empty. Please add items from the menu before checking out.'
+      );
+      return;
+    }
 
     // Form Validations
     if (!customerName.trim()) {
@@ -183,6 +201,22 @@ export const CartModal: React.FC = () => {
       // 1. Generate Safe Unique Order ID
       const orderId = generateOrderId();
 
+      // 1b. Server price calculation verification
+      const serverTotals = await calculateTotalsViaServer(
+        cart.map((item) => ({
+          productId: item.product.id,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        orderType,
+        pincode.trim()
+      );
+
+      const verifiedSubtotal = serverTotals.subtotal;
+      const verifiedDiscount = serverTotals.discountAmount;
+      const verifiedDelivery = serverTotals.deliveryCharge;
+      const verifiedTotal = serverTotals.finalTotal;
+
       // Determine address: if not provided by customer, set safe fallback
       const finalDeliveryAddress = deliveryAddress.trim()
         ? deliveryAddress.trim()
@@ -194,10 +228,12 @@ export const CartModal: React.FC = () => {
       const rawOrderPayload = {
         orderId,
         customerId: currentCustomer ? currentCustomer.id : `guest_${cleanPhone}`,
+        customerUid: currentCustomer ? currentCustomer.id : undefined,
         customerName: customerName.trim(),
         phone: cleanPhone,
+        isPhoneVerified: Boolean(currentCustomer?.mobile),
         email: currentCustomer?.email || '',
-        items: cart.map((item) => ({
+        items: serverTotals.verifiedItems || cart.map((item) => ({
           productId: item.product.id,
           productName: item.product.nameEn,
           productNameBn: item.product.nameBn,
@@ -207,13 +243,15 @@ export const CartModal: React.FC = () => {
           quantity: item.quantity,
           subtotal: item.price * item.quantity
         })),
-        subtotal: cartTotal,
-        deliveryCharge,
-        discountAmount: discount5Percent,
-        totalAmount: finalTotal,
+        subtotal: verifiedSubtotal,
+        deliveryCharge: verifiedDelivery,
+        discountAmount: verifiedDiscount,
+        totalAmount: verifiedTotal,
+        finalTotal: verifiedTotal,
         paymentMethod,
         paymentStatus: 'pending' as const,
         status: 'PENDING' as const,
+        orderStatus: 'PENDING' as const,
         orderType,
         deliveryAddress: finalDeliveryAddress,
         village: village.trim(),
@@ -257,7 +295,7 @@ export const CartModal: React.FC = () => {
       // 3. Write directly to Firestore with mapped payload
       const createdFirestoreOrder = await createFirestoreOrder(mappedOrder);
 
-      // 4. Update local history and sync with Google Sheets
+      // 4. Update local history and sync with Cloud Database
       const localHistoryOrder = addOrderToHistory({
         items: [...cart],
         subtotal: cartTotal,
@@ -275,10 +313,12 @@ export const CartModal: React.FC = () => {
         status: 'New Order'
       });
 
-      // 5. Background sync to Google Sheets
-      syncOrderToServerSheets(localHistoryOrder).catch((e) =>
-        console.warn('Google Sheets sync notice:', e)
-      );
+      // 5b. Automatic Telegram Notification to https://t.me/r5yyy5z
+      sendTelegramOrderNotification(createdFirestoreOrder).then((tgRes) => {
+        console.log('[CartModal] Telegram notification result for @r5yyy5z:', tgRes);
+      }).catch((e) => {
+        console.warn('Telegram notification dispatch notice:', e);
+      });
 
       // 6. Set success view and clear cart
       setPlacedOrder(createdFirestoreOrder);
@@ -380,6 +420,13 @@ export const CartModal: React.FC = () => {
                 </div>
 
                 <div className="flex justify-between text-stone-500">
+                  <span>Payment Status:</span>
+                  <span className={`font-bold uppercase ${placedOrder.paymentStatus === 'paid' ? 'text-emerald-500' : 'text-amber-500'}`}>
+                    {placedOrder.paymentStatus === 'paid' ? 'Paid (Verified)' : 'Pending (Awaiting Verification)'}
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-stone-500">
                   <span>Delivery Address:</span>
                   <span className="font-semibold text-right max-w-[200px] truncate">
                     {placedOrder.deliveryAddress}
@@ -408,6 +455,31 @@ export const CartModal: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="pt-2 space-y-2">
+                {/* Real-time Telegram Notification Status Banner */}
+                <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs flex items-center justify-between gap-2 shadow-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Send className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <span className="font-bold block text-stone-100 truncate">
+                        {language === 'bn' ? 'টেলিগ্রাম নোটিফিকেশন পাঠানো হয়েছে' : 'Telegram Order Alert Sent'}
+                      </span>
+                      <span className="text-[11px] text-sky-300/80 truncate block">
+                        {language === 'bn' ? 'মালিক অ্যাকাউন্ট: @r5yyy5z' : 'Owner account: @r5yyy5z'}
+                      </span>
+                    </div>
+                  </div>
+                  <a
+                    href={getDirectTelegramOrderLink(placedOrder)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-stone-950 font-bold text-[11px] transition-all flex items-center gap-1 shadow-sm flex-shrink-0"
+                    title="View Telegram Notification"
+                  >
+                    <span>{language === 'bn' ? 'টেলিগ্রাম' : 'Telegram'}</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+
                 <button
                   type="button"
                   onClick={handleOpenTracker}
@@ -422,13 +494,22 @@ export const CartModal: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="w-full py-2 rounded-xl border border-stone-300 dark:border-stone-700 text-xs font-semibold flex items-center justify-center gap-1.5 text-stone-600 dark:text-stone-400 hover:text-amber-500"
+                  onClick={() => setShowInvoiceModal(true)}
+                  className="w-full py-2 rounded-xl border border-amber-500/40 text-xs font-semibold flex items-center justify-center gap-1.5 text-amber-500 hover:bg-amber-500/10 cursor-pointer transition-colors"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>{language === 'bn' ? 'রসিদ প্রিন্ট করুন' : 'Print Invoice'}</span>
+                  <span>{language === 'bn' ? 'অফিসিয়াল ট্যাক্স রসিদ দেখুন / প্রিন্ট' : 'View & Print Tax Invoice'}</span>
                 </button>
               </div>
+
+              {/* Enhanced Order Tax Invoice Modal */}
+              <InvoiceModal
+                order={placedOrder}
+                isOpen={showInvoiceModal}
+                onClose={() => setShowInvoiceModal(false)}
+                language={language}
+                theme={theme}
+              />
             </div>
           ) : cart.length === 0 ? (
             /* ===============================================================
@@ -789,6 +870,30 @@ export const CartModal: React.FC = () => {
                     <span className="text-amber-500">₹{finalTotal}</span>
                   </div>
                 </div>
+
+                {/* OTP Login Banner at Bottom of Checkout if Not Logged In */}
+                {!currentCustomer && (
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-400/10 to-amber-600/15 border border-amber-500/35 flex items-center justify-between gap-2 shadow-sm">
+                    <div className="text-xs">
+                      <div className="font-bold text-amber-400 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{language === 'bn' ? '৫% ছাড় ও ১০ পয়েন্ট চান?' : 'Want 5% OFF & 10 Points?'}</span>
+                      </div>
+                      <p className="text-[11px] text-stone-400 mt-0.5">
+                        {language === 'bn' ? 'মোবাইল ওটিপি দিয়ে ১-ক্লিকে লগইন করুন' : '1-Click Login with Mobile OTP'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openLoginModal}
+                      id="cart-bottom-otp-login-btn"
+                      className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-md transition-all active:scale-95 flex items-center gap-1 flex-shrink-0"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{language === 'bn' ? 'OTP লগইন' : 'OTP Login'}</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Submit Order Button */}
                 <button

@@ -110,7 +110,7 @@ export const translations = {
     celebrationFormPhone: 'ফোন নম্বর',
     celebrationFormOccasion: 'অনুষ্ঠানের ধরন',
     celebrationFormQty: 'সম্ভাব্য মিষ্টির পরিমাণ (কেজি / পিস)',
-    celebrationFormSend: 'সরাসরি ইনকোয়ারি জমা দিন (Google Sheets)',
+    celebrationFormSend: 'সরাসরি ইনকোয়ারি জমা দিন',
 
     // About
     aboutTitle: 'আমাদের ঐতিহ্য ও গল্প',
@@ -161,7 +161,7 @@ export const translations = {
     cartEmpty: 'আপনার ঝুড়ি খালি রয়েছে। প্রিয় মিষ্টি যোগ করুন!',
     subtotal: 'মোট মূল্য',
     deliveryNote: 'ডেলিভারি / টেকওয়ে সুবিধা উপলব্ধ',
-    checkoutWhatsApp: 'অর্ডার নিশ্চিত করুন (সরাসরি Google Sheets)',
+    checkoutWhatsApp: 'অর্ডার নিশ্চিত করুন',
     checkoutCall: 'ফোনে অর্ডার করুন',
     yourName: 'আপনার নাম',
     deliveryAddress: 'ডেলিভারির ঠিকানা / এলাকা',
@@ -327,7 +327,7 @@ export const translations = {
     celebrationFormPhone: 'Phone Number',
     celebrationFormOccasion: 'Event Type',
     celebrationFormQty: 'Estimated Quantity (pcs / kg)',
-    celebrationFormSend: 'Submit Inquiry (Direct to Google Sheets)',
+    celebrationFormSend: 'Submit Inquiry',
 
     // About
     aboutTitle: 'Our Legacy & Story',
@@ -378,7 +378,7 @@ export const translations = {
     cartEmpty: 'Your cart is empty. Add some delicious sweets!',
     subtotal: 'Total Amount',
     deliveryNote: 'Takeaway and local delivery assistance available',
-    checkoutWhatsApp: 'Confirm Order (Direct to Google Sheets)',
+    checkoutWhatsApp: 'Confirm Order',
     checkoutCall: 'Call to Place Order',
     yourName: 'Your Name',
     deliveryAddress: 'Delivery Address / Location',

@@ -11,7 +11,9 @@ export const SnacksMenu: React.FC = () => {
 
   const [activePortionMap, setActivePortionMap] = useState<Record<string, 'primary' | 'secondary'>>({});
 
-  const snackProducts = products.filter(p => p.category === 'snack');
+  const snackProducts = products.filter(
+    (p) => p.category === 'snack' && p.isEnabled !== false
+  );
 
   const getActivePortionDetails = (item: ProductItem) => {
     const activeType = activePortionMap[item.id] || 'primary';
@@ -98,9 +100,16 @@ export const SnacksMenu: React.FC = () => {
                 <div>
                   {/* Header Badge & Portion Row (Image-free Clean Design) */}
                   <div className="flex items-center justify-between gap-2 mb-3.5">
-                    <span className="px-2.5 py-1 rounded-full bg-amber-500 text-stone-950 font-bold text-[10px] shadow-sm">
-                      {language === 'bn' ? (item.badgeBn || 'তাজা নাস্তা') : (item.badgeEn || 'Fresh Snack')}
-                    </span>
+                    {item.isAvailable === false ? (
+                      <span className="px-2.5 py-1 rounded-full bg-red-600 text-white font-bold text-[10px] shadow-sm animate-pulse flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                        <span>{language === 'bn' ? 'স্টক শেষ' : 'Out of Stock'}</span>
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-full bg-amber-500 text-stone-950 font-bold text-[10px] shadow-sm">
+                        {language === 'bn' ? (item.badgeBn || 'তাজা নাস্তা') : (item.badgeEn || 'Fresh Snack')}
+                      </span>
+                    )}
                     <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-stone-950/85 backdrop-blur-sm border border-amber-500/30 text-amber-300 shadow">
                       {currentPortion.portion}
                     </span>
@@ -185,15 +194,26 @@ export const SnacksMenu: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => addToCart(item, currentPortion.portion, currentPortion.price)}
-                    id={`snack-order-${item.id}`}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow active:scale-95 transition-all"
-                  >
-                    <ShoppingBag className="w-3.5 h-3.5" />
-                    <span>{t.addToCart}</span>
-                  </button>
+                  {item.isAvailable === false ? (
+                    <button
+                      type="button"
+                      disabled
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-stone-800 text-stone-400 border border-stone-700/60 cursor-not-allowed opacity-90"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-red-500" />
+                      <span>{language === 'bn' ? 'স্টক শেষ' : 'Out of Stock'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => addToCart(item, currentPortion.portion, currentPortion.price)}
+                      id={`snack-order-${item.id}`}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow active:scale-95 transition-all"
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5" />
+                      <span>{t.addToCart}</span>
+                    </button>
+                  )}
                 </div>
               </div>
               </ScrollReveal>

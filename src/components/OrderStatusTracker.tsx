@@ -22,6 +22,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { OrderTimestamp } from './OrderTimestamp';
+import { InvoiceModal } from './InvoiceModal';
 
 interface OrderStatusTrackerProps {
   orderId: string;
@@ -132,8 +133,10 @@ export const OrderStatusTracker: React.FC<OrderStatusTrackerProps> = ({ orderId,
     return index !== -1 ? index : 0;
   };
 
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+
   const handlePrint = () => {
-    window.print();
+    setShowInvoiceModal(true);
   };
 
   if (loading) {
@@ -475,6 +478,15 @@ export const OrderStatusTracker: React.FC<OrderStatusTrackerProps> = ({ orderId,
           </div>
         </div>
       </div>
+
+      {/* Structured Tax Invoice Modal */}
+      <InvoiceModal
+        order={order}
+        isOpen={showInvoiceModal}
+        onClose={() => setShowInvoiceModal(false)}
+        language={language}
+        theme={theme}
+      />
     </div>
   );
 };

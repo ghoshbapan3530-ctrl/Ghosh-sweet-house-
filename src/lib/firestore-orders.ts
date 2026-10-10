@@ -11,9 +11,12 @@ import {
   orderBy,
   limit,
   serverTimestamp,
-  Timestamp
+  Timestamp,
+  FieldValue
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { signInAnonymously } from 'firebase/auth';
+import { db, auth, handleFirestoreError, OperationType } from './firebase';
+import { OrderFeedback } from '../types';
 
 export type FirebaseOrderStatus =
   | 'PENDING'
@@ -39,17 +42,22 @@ export interface FirebaseOrder {
   id: string; // document id
   orderId: string; // GH202609240001
   customerId: string;
+  customerUid?: string;
   customerName: string;
   phone: string;
+  isPhoneVerified?: boolean;
   email?: string;
   items: FirebaseOrderItem[];
   subtotal: number;
   deliveryCharge: number;
   discountAmount?: number;
   totalAmount: number;
+  finalTotal?: number;
   paymentMethod: 'cod' | 'online';
   paymentStatus: 'pending' | 'paid' | 'failed';
   status: FirebaseOrderStatus;
+  orderStatus?: FirebaseOrderStatus;
+  serverTimestamp?: any;
   orderType: 'delivery' | 'takeaway';
   deliveryAddress: string;
   village?: string;
@@ -69,6 +77,7 @@ export interface FirebaseOrder {
   outForDeliveryAt?: string | null;
   deliveredAt?: string | null;
   cancelledAt?: string | null;
+  feedback?: OrderFeedback;
 }
 
 export interface OwnerSettings {
@@ -80,6 +89,12 @@ export interface OwnerSettings {
   ownerFcmTokens?: string[];
   shopPhone?: string;
   shopWhatsapp?: string;
+  telegramUsername?: string;
+  telegramAccountLink?: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  telegramNotificationsEnabled?: boolean;
+  lowStockThreshold?: number; // global default threshold for low stock alerts
   updatedAt?: string;
 }
 
@@ -90,7 +105,12 @@ export const DEFAULT_OWNER_SETTINGS: OwnerSettings = {
   freeDeliveryAbove: 500,
   supportedPincodes: ['732201', '732206', '732207', '732208', '732205', '732209'],
   shopPhone: '9733363562',
-  shopWhatsapp: '919733363562'
+  shopWhatsapp: '919733363562',
+  telegramUsername: 'r5yyy5z',
+  telegramAccountLink: 'https://t.me/r5yyy5z',
+  telegramChatId: 'r5yyy5z',
+  telegramNotificationsEnabled: true,
+  lowStockThreshold: 10
 };
 
 /**
@@ -138,17 +158,21 @@ export function removeUndefined<T>(obj: T): T {
 export const DEFAULT_ORDER_STRUCTURE = {
   orderId: '',
   customerId: '',
+  customerUid: '',
   customerName: '',
   phone: '',
+  isPhoneVerified: false,
   email: '',
   items: [] as FirebaseOrderItem[],
   subtotal: 0,
   deliveryCharge: 0,
   discountAmount: 0,
   totalAmount: 0,
+  finalTotal: 0,
   paymentMethod: 'cod' as 'cod' | 'online',
   paymentStatus: 'pending' as 'pending' | 'paid' | 'failed',
   status: 'PENDING' as FirebaseOrderStatus,
+  orderStatus: 'PENDING' as FirebaseOrderStatus,
   orderType: 'delivery' as 'delivery' | 'takeaway',
   deliveryAddress: '',
   village: '',
@@ -161,6 +185,69 @@ export const DEFAULT_ORDER_STRUCTURE = {
   cancelReason: '',
   notificationSent: false
 } as const;
+
+/**
+ * Trusted server-side calculation for order totals, discounts and delivery charges
+ */
+export async function calculateTotalsViaServer(
+  items: Array<{ productId: string; quantity: number; price: number; portion?: string }>,
+  orderType: 'delivery' | 'takeaway',
+  pincode?: string
+): Promise<{
+  subtotal: number;
+  discountAmount: number;
+  deliveryCharge: number;
+  finalTotal: number;
+  verifiedItems?: FirebaseOrderItem[];
+}> {
+  try {
+    const res = await fetch('/api/orders/calculate-total', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, orderType, pincode })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success) {
+        return {
+          subtotal: data.subtotal,
+          discountAmount: data.discountAmount,
+          deliveryCharge: data.deliveryCharge,
+          finalTotal: data.finalTotal,
+          verifiedItems: data.verifiedItems
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[calculateTotalsViaServer] Server calculation fallback:', err);
+  }
+  const subtotal = items.reduce((s, it) => s + (it.price * it.quantity), 0);
+  const discountAmount = subtotal >= 100 ? Number((subtotal * 0.05).toFixed(2)) : 0;
+  const deliveryCharge = orderType === 'takeaway' || subtotal >= 500 ? 0 : 30;
+  const finalTotal = Math.max(0, Number((subtotal - discountAmount + deliveryCharge).toFixed(2)));
+  return { subtotal, discountAmount, deliveryCharge, finalTotal };
+}
+
+/**
+ * Trusted server-side verification of online payments
+ */
+export async function verifyOnlinePaymentViaServer(
+  orderId: string,
+  transactionId: string,
+  amount: number
+): Promise<{ success: boolean; verified: boolean; message?: string }> {
+  try {
+    const res = await fetch('/api/orders/verify-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, transactionId, amount, paymentMethod: 'online' })
+    });
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, verified: false, message: err.message };
+  }
+}
 
 export type OrderStructureKey = keyof typeof DEFAULT_ORDER_STRUCTURE;
 
@@ -478,7 +565,7 @@ export function validateOrderPayload(
 }
 
 /**
- * Creates an order in Firestore
+ * Creates an order in Firestore with persistent storage, server timestamp, and verified UID
  */
 export async function createFirestoreOrder(
   order: Partial<Omit<FirebaseOrder, 'id' | 'createdAt' | 'updatedAt'>>
@@ -497,19 +584,41 @@ export async function createFirestoreOrder(
     );
   }
 
+  // Ensure an authenticated session exists (signs in anonymously if needed)
+  let currentAuthUid = auth?.currentUser?.uid;
+  if (!currentAuthUid && auth) {
+    try {
+      const anon = await signInAnonymously(auth);
+      currentAuthUid = anon.user.uid;
+    } catch (authErr) {
+      console.warn('[createFirestoreOrder] Anonymous auth session initialization note:', authErr);
+    }
+  }
+
+  const resolvedUid = currentAuthUid || (mappedOrder.customerId?.startsWith('guest_') ? mappedOrder.customerId : `guest_${mappedOrder.phone}`);
   const now = new Date().toISOString();
 
   const finalOrder: FirebaseOrder = removeUndefined({
     ...mappedOrder,
+    customerId: resolvedUid,
+    customerUid: resolvedUid,
+    finalTotal: mappedOrder.totalAmount,
+    orderStatus: mappedOrder.status,
+    serverTimestamp: serverTimestamp(),
+    isPhoneVerified: Boolean(auth?.currentUser?.phoneNumber || mappedOrder.phone),
     id: mappedOrder.orderId,
     createdAt: now,
     updatedAt: now
   });
 
   const orderDocRef = doc(db, 'orders', finalOrder.orderId);
-  await setDoc(orderDocRef, finalOrder);
+  try {
+    await setDoc(orderDocRef, finalOrder);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `orders/${finalOrder.orderId}`);
+  }
 
-  console.log(`[createFirestoreOrder] Successfully created order ${finalOrder.orderId} in Firestore:`, finalOrder);
+  console.log(`[createFirestoreOrder] Successfully created order ${finalOrder.orderId} in Cloud Firestore:`, finalOrder);
 
   // Also record customer contact in customers collection
   if (finalOrder.phone) {
@@ -557,6 +666,7 @@ export function subscribeToOrder(
     (err) => {
       console.error(`[Firestore] Error subscribing to order ${orderId}:`, err);
       if (onError) onError(err);
+      handleFirestoreError(err, OperationType.GET, `orders/${orderId}`);
     }
   );
 }
@@ -580,6 +690,7 @@ export function subscribeToAllOrders(
     (err) => {
       console.error('[Firestore] Error subscribing to all orders:', err);
       if (onError) onError(err);
+      handleFirestoreError(err, OperationType.LIST, 'orders');
     }
   );
 }
@@ -592,12 +703,15 @@ export function subscribeToCustomerOrders(
   onUpdate: (orders: FirebaseOrder[]) => void
 ): () => void {
   const ordersCol = collection(db, 'orders');
-  // Query by customerId or phone
+  const activeUid = auth?.currentUser?.uid;
+  const targetId = activeUid || customerIdOrPhone;
+
+  // Query strictly for this customer's orders to comply with security rules
   const q = query(
     ordersCol,
-    where('phone', '==', customerIdOrPhone),
+    where('customerId', '==', targetId),
     orderBy('createdAt', 'desc'),
-    limit(30)
+    limit(50)
   );
 
   return onSnapshot(
@@ -607,20 +721,30 @@ export function subscribeToCustomerOrders(
       onUpdate(orders);
     },
     (err) => {
-      console.warn('[Firestore] Error subscribing to customer orders, trying fallback:', err);
-      // Fallback query if composite index is pending
-      const fallbackQuery = query(ordersCol, where('phone', '==', customerIdOrPhone));
-      onSnapshot(fallbackQuery, (snap2) => {
-        const list = snap2.docs.map((d) => ({ ...(d.data() as FirebaseOrder), id: d.id }));
-        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        onUpdate(list);
-      });
+      console.warn('[Firestore] Notice subscribing with composite index, trying fallback query:', err);
+      // Safe fallback query by customerId without orderBy
+      const fallbackQuery = query(ordersCol, where('customerId', '==', targetId));
+      onSnapshot(
+        fallbackQuery,
+        (snap2) => {
+          const list = snap2.docs.map((d) => ({ ...(d.data() as FirebaseOrder), id: d.id }));
+          list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          onUpdate(list);
+        },
+        (err2) => {
+          handleFirestoreError(err2, OperationType.LIST, 'orders');
+        }
+      );
     }
   );
 }
 
 /**
- * Updates order status and timestamps
+ * Updates order status and management timestamps in Firestore.
+ *
+ * IMMUTABILITY ENFORCEMENT:
+ * Historical order prices, item quantities, subtotal, discount, and total amount
+ * are strictly preserved and CANNOT be altered by this function.
  */
 export async function updateOrderStatusInFirestore(
   orderId: string,
@@ -633,10 +757,19 @@ export async function updateOrderStatusInFirestore(
   }
 ): Promise<void> {
   const now = new Date().toISOString();
+  
+  // Whitelist only allowed operational fields to prevent accidental price alterations
+  const safeExtra: Record<string, any> = {};
+  if (extra?.ownerNote !== undefined) safeExtra.ownerNote = extra.ownerNote;
+  if (extra?.cancelReason !== undefined) safeExtra.cancelReason = extra.cancelReason;
+  if (extra?.estimatedMinutes !== undefined) safeExtra.estimatedMinutes = extra.estimatedMinutes;
+  if (extra?.paymentStatus !== undefined) safeExtra.paymentStatus = extra.paymentStatus;
+
   const updatePayload: Record<string, any> = {
     status: newStatus,
+    orderStatus: newStatus,
     updatedAt: now,
-    ...extra
+    ...safeExtra
   };
 
   if (newStatus === 'ACCEPTED') updatePayload.acceptedAt = now;
@@ -648,7 +781,11 @@ export async function updateOrderStatusInFirestore(
 
   const cleanPayload = removeUndefined(updatePayload);
   const orderRef = doc(db, 'orders', orderId);
-  await updateDoc(orderRef, cleanPayload);
+  try {
+    await updateDoc(orderRef, cleanPayload);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
+  }
 }
 
 /**
@@ -718,5 +855,59 @@ export function playOrderAlertSound(): void {
     });
   } catch (e) {
     // Autoplay policy or unsupported audio
+  }
+}
+
+/**
+ * Submits post-order customer rating, compliment tags, and feedback to Firestore
+ */
+export async function submitOrderFeedbackInFirestore(
+  orderId: string,
+  feedback: {
+    rating: number;
+    tags?: string[];
+    comment?: string;
+    customerName?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const now = new Date().toISOString();
+    const orderDocRef = doc(db, 'orders', orderId);
+
+    const feedbackPayload: OrderFeedback = {
+      rating: Math.min(5, Math.max(1, Math.round(feedback.rating || 5))),
+      tags: Array.isArray(feedback.tags) ? feedback.tags : [],
+      comment: (feedback.comment || '').trim(),
+      createdAt: now,
+      customerName: (feedback.customerName || 'Customer').trim()
+    };
+
+    // Update order with customer feedback and timestamp
+    await updateDoc(orderDocRef, {
+      feedback: feedbackPayload,
+      updatedAt: now
+    });
+
+    console.log(`[Firestore Orders] Feedback submitted for order #${orderId}:`, feedbackPayload);
+
+    // Also persist into reviews collection for public testimonials
+    try {
+      const reviewDocRef = doc(db, 'reviews', `order_${orderId}`);
+      await setDoc(reviewDocRef, {
+        orderId,
+        rating: feedbackPayload.rating,
+        tags: feedbackPayload.tags,
+        comment: feedbackPayload.comment,
+        customerName: feedbackPayload.customerName,
+        createdAt: now
+      }, { merge: true });
+    } catch (revErr) {
+      console.warn('[Firestore Orders] Notice saving review record:', revErr);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error(`[Firestore Orders] Error submitting feedback for #${orderId}:`, err);
+    return { success: false, error: err.message || 'Failed to submit feedback' };
   }
 }

@@ -1,15 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useShop } from '../context/ShopContext';
-import { X, Sparkles, Gift, ShieldCheck, User, Phone, ArrowRight, CheckCircle2, AlertCircle, KeyRound, RefreshCw } from 'lucide-react';
+import {
+  X,
+  User,
+  Lock,
+  Phone,
+  ArrowRight,
+  ArrowLeft,
+  CheckCircle2,
+  AlertCircle,
+  ShieldCheck,
+  MapPin,
+  Mail,
+  RefreshCw,
+  Gift,
+  KeyRound,
+  FileCheck2
+} from 'lucide-react';
 
 export const AuthModal: React.FC = () => {
   const {
     isAuthModalOpen,
     setIsAuthModalOpen,
     authModalMode,
-    setAuthModalMode,
     sendOtp,
     verifyOtpAndAuthenticate,
+    completeProfileForCustomer,
     language,
     theme,
     setIsDashboardOpen
@@ -17,39 +33,102 @@ export const AuthModal: React.FC = () => {
 
   const isDark = theme === 'dark';
 
-  // Step state: 'phone' -> 'otp' -> (optional 'name')
-  const [step, setStep] = useState<'phone' | 'otp' | 'name'>('phone');
-  const [mobile, setMobile] = useState('');
+  // Screen modes:
+  // 'selection': The 2-button welcome chooser screen
+  // 'signup_form': The New Customer registration form
+  // 'signin_form': The Existing Customer phone input form
+  // 'otp_verification': The 6-digit OTP verification screen
+  // 'complete_profile': For existing auth user whose profile is missing in Firestore
+  const [screen, setScreen] = useState<'selection' | 'signup_form' | 'signin_form' | 'otp_verification' | 'complete_profile'>('selection');
+
+  // Form Fields
+  const [fullName, setFullName] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [pinCode, setPinCode] = useState('');
+
+  // OTP Fields
   const [otpCode, setOtpCode] = useState('');
-  const [name, setName] = useState('');
+  const [activeFlow, setActiveFlow] = useState<'signup' | 'signin'>('signup');
+
+  // Feedback & Loading States
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [otpSentHint, setOtpSentHint] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Sync with authModalMode if opened with specific intent
+  useEffect(() => {
+    if (isAuthModalOpen) {
+      setErrorMsg('');
+      setSuccessMsg('');
+      setOtpCode('');
+      if (authModalMode === 'signup') {
+        setScreen('signup_form');
+        setActiveFlow('signup');
+      } else if (authModalMode === 'login') {
+        setScreen('signin_form');
+        setActiveFlow('signin');
+      } else {
+        setScreen('selection');
+      }
+    }
+  }, [isAuthModalOpen, authModalMode]);
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   if (!isAuthModalOpen) return null;
 
   const handleClose = () => {
     setIsAuthModalOpen(false);
-    setStep('phone');
+    setScreen('selection');
     setErrorMsg('');
     setSuccessMsg('');
     setOtpSentHint(null);
   };
 
-  // Step 1: Send OTP to mobile
-  const handleSendOtp = async (e: React.FormEvent) => {
+  const sanitizeMobile = (val: string) => {
+    return val.replace(/[^0-9]/g, '').slice(0, 10);
+  };
+
+  const sanitizePin = (val: string) => {
+    return val.replace(/[^0-9]/g, '').slice(0, 6);
+  };
+
+  // =========================================================================
+  // FLOW 1: NEW CUSTOMER — SEND OTP
+  // =========================================================================
+  const handleNewCustomerSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
-    const cleanMobile = mobile.replace(/[^0-9]/g, '').slice(-10);
 
-    if (cleanMobile.length < 10) {
-      setErrorMsg(
-        language === 'bn'
-          ? 'অনুগ্রহ করে সঠিক ১০ সংখ্যার মোবাইল নম্বর লিখুন।'
-          : 'Please enter a valid 10-digit mobile number.'
-      );
+    if (!fullName.trim()) {
+      setErrorMsg(language === 'bn' ? 'অনুগ্রহ করে আপনার পুরো নাম লিখুন।' : 'Please enter your Full Name.');
+      return;
+    }
+
+    const cleanMobile = sanitizeMobile(mobileNumber);
+    if (cleanMobile.length !== 10) {
+      setErrorMsg(language === 'bn' ? 'অনুগ্রহ করে সঠিক ১০ সংখ্যার মোবাইল নম্বর লিখুন।' : 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    if (!deliveryAddress.trim()) {
+      setErrorMsg(language === 'bn' ? 'অনুগ্রহ করে ডেলিভারি ঠিকানা লিখুন।' : 'Please provide your Delivery Address.');
+      return;
+    }
+
+    if (pinCode.trim().length < 6) {
+      setErrorMsg(language === 'bn' ? 'অনুগ্রহ করে সঠিক ৬ সংখ্যার পিন কোড লিখুন।' : 'Please enter a valid 6-digit PIN code.');
       return;
     }
 
@@ -58,117 +137,216 @@ export const AuthModal: React.FC = () => {
       const res = await sendOtp(cleanMobile);
       if (!res.success) {
         setErrorMsg(res.message);
-        setIsLoading(false);
         return;
       }
 
       setOtpSentHint(res.testOtp || '123456');
-      setStep('otp');
+      setActiveFlow('signup');
+      setScreen('otp_verification');
+      setResendCooldown(30);
       setSuccessMsg(
         language === 'bn'
           ? `+91 ${cleanMobile} নম্বরে ওটিপি পাঠানো হয়েছে!`
           : `OTP sent to +91 ${cleanMobile}!`
       );
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Error sending OTP');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to dispatch OTP.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Step 2: Verify OTP
+  // =========================================================================
+  // FLOW 2: EXISTING CUSTOMER — SEND OTP
+  // =========================================================================
+  const handleExistingCustomerSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    const cleanMobile = sanitizeMobile(mobileNumber);
+    if (cleanMobile.length !== 10) {
+      setErrorMsg(language === 'bn' ? 'অনুগ্রহ করে সঠিক ১০ সংখ্যার মোবাইল নম্বর লিখুন।' : 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await sendOtp(cleanMobile);
+      if (!res.success) {
+        setErrorMsg(res.message);
+        return;
+      }
+
+      setOtpSentHint(res.testOtp || '123456');
+      setActiveFlow('signin');
+      setScreen('otp_verification');
+      setResendCooldown(30);
+      setSuccessMsg(
+        language === 'bn'
+          ? `+91 ${cleanMobile} নম্বরে ওটিপি পাঠানো হয়েছে!`
+          : `OTP sent to +91 ${cleanMobile}!`
+      );
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to dispatch OTP.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // =========================================================================
+  // FLOW 3: VERIFY OTP CODE
+  // =========================================================================
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (otpCode.trim().length < 6) {
-      setErrorMsg(
-        language === 'bn'
-          ? 'অনুগ্রহ করে ৬ সংখ্যার ওটিপি কোড লিখুন।'
-          : 'Please enter the 6-digit OTP code.'
-      );
+    const cleanOtp = otpCode.trim();
+    if (cleanOtp.length < 4) {
+      setErrorMsg(language === 'bn' ? 'অনুগ্রহ করে ওটিপি কোড লিখুন।' : 'Please enter the OTP verification code.');
       return;
     }
 
-    // If in signup mode and name is not provided yet, transition to name step
-    if (authModalMode === 'signup' && !name.trim()) {
-      setStep('name');
-      return;
-    }
+    const cleanMobile = sanitizeMobile(mobileNumber);
 
-    await completeVerification(name.trim());
-  };
-
-  // Step 3: Complete verification and profile linking
-  const handleNameSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
-
-    if (!name.trim()) {
-      setErrorMsg(
-        language === 'bn' ? 'অনুগ্রহ করে আপনার পুরো নাম লিখুন।' : 'Please enter your full name.'
-      );
-      return;
-    }
-
-    await completeVerification(name.trim());
-  };
-
-  const completeVerification = async (customerName: string) => {
     setIsLoading(true);
     try {
-      const res = await verifyOtpAndAuthenticate(mobile, otpCode.trim(), customerName);
+      // If we are in New Customer flow, pass the completed registration data
+      const newCustomerPayload = activeFlow === 'signup'
+        ? {
+            name: fullName.trim(),
+            email: email.trim(),
+            address: deliveryAddress.trim(),
+            pinCode: pinCode.trim()
+          }
+        : undefined;
+
+      const res = await verifyOtpAndAuthenticate(cleanMobile, cleanOtp, newCustomerPayload);
+
       if (!res.success) {
-        setErrorMsg(res.message || 'OTP verification failed');
+        setErrorMsg(res.message || 'OTP verification failed. Please try again.');
         setIsLoading(false);
         return;
       }
 
-      if (res.isNew) {
+      // Check whether profile exists
+      if (res.customer) {
+        // Customer profile exists in Firestore
         setSuccessMsg(
-          language === 'bn'
-            ? 'অভিনন্দন! আপনার প্রোফাইল তৈরি হয়েছে এবং ১০ মিষ্টি পয়েন্ট (₹৫.০০) স্বাগত উপহার যোগ হয়েছে!'
-            : 'Congratulations! Your profile is created with 10 Sweet Points (₹5.00) welcome bonus!'
+          res.isNew
+            ? (language === 'bn' ? 'স্বাগতম! আপনার অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে।' : 'Welcome to Ghosh Sweet House! Your account has been created.')
+            : (language === 'bn' ? 'স্বাগতম! লগইন সফল হয়েছে।' : 'Welcome back! Login successful.')
         );
+
+        setTimeout(() => {
+          handleClose();
+          setIsDashboardOpen(true);
+        }, 900);
       } else {
+        // First-Time / Missing Profile for this phone number: Prompt to complete profile
+        setScreen('complete_profile');
         setSuccessMsg(
           language === 'bn'
-            ? 'স্বাগতম! আপনার লয়্যালটি প্রোফাইল সফলভাবে লোড হয়েছে।'
-            : 'Welcome back! Your loyalty profile is loaded.'
+            ? 'স্বাগতম ঘোষ মিষ্টান্ন ভাণ্ডারে! অনুগ্রহ করে আপনার প্রোফাইল সম্পূর্ণ করুন।'
+            : 'Welcome to Ghosh Sweet House! Please complete your profile.'
         );
       }
-
-      setTimeout(() => {
-        handleClose();
-        setIsDashboardOpen(true);
-      }, 1000);
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Verification failed');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Authentication error.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // =========================================================================
+  // FLOW 4: COMPLETE PROFILE (If existing Auth account has no profile in Firestore)
+  // =========================================================================
+  const handleCompleteProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    if (!fullName.trim()) {
+      setErrorMsg(language === 'bn' ? 'অনুগ্রহ করে আপনার পুরো নাম লিখুন।' : 'Please enter your Full Name.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await completeProfileForCustomer({
+        name: fullName.trim(),
+        email: email.trim(),
+        address: deliveryAddress.trim(),
+        pinCode: pinCode.trim()
+      });
+
+      if (!res.success) {
+        setErrorMsg(res.error || 'Could not save profile in Firestore.');
+        return;
+      }
+
+      setSuccessMsg(
+        language === 'bn'
+          ? 'প্রোফাইল সফলভাবে সংরক্ষিত হয়েছে! অ্যাকাউন্টে প্রবেশ করা হচ্ছে...'
+          : 'Profile saved successfully! Redirecting to My Account...'
+      );
+
+      setTimeout(() => {
+        handleClose();
+        setIsDashboardOpen(true);
+      }, 900);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error saving profile.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Resend OTP helper
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    setErrorMsg('');
+    setIsLoading(true);
+    try {
+      const res = await sendOtp(sanitizeMobile(mobileNumber));
+      if (res.success) {
+        setOtpSentHint(res.testOtp || '123456');
+        setResendCooldown(30);
+        setSuccessMsg(language === 'bn' ? 'নতুন ওটিপি পাঠানো হয়েছে!' : 'New OTP has been sent!');
+      } else {
+        setErrorMsg(res.message);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to resend OTP');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in"
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
       id="auth-modal"
     >
       <div
-        className={`relative w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border transition-all duration-300 max-h-[92vh] flex flex-col ${
+        className={`relative w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden border transition-all duration-300 max-h-[92vh] flex flex-col ${
           isDark
             ? 'bg-[#180E08] border-amber-500/30 text-amber-50'
             : 'bg-white border-amber-900/15 text-stone-900'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header Ribbon / Banner */}
+        {/* Invisible ReCAPTCHA container for Firebase Phone Auth */}
+        <div id="recaptcha-container" />
+
+        {/* Mobile Pull-Down Indicator */}
+        <div className="w-12 h-1 bg-stone-700/40 rounded-full mx-auto mt-2 -mb-1 sm:hidden z-10" />
+
+        {/* Modal Header */}
         <div className="relative p-5 sm:p-6 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-700 text-stone-950 flex-shrink-0">
           <button
             onClick={handleClose}
@@ -179,301 +357,605 @@ export const AuthModal: React.FC = () => {
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2 mb-2">
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-stone-950 text-amber-300 flex items-center gap-1.5 shadow-sm">
-              <Gift className="w-3.5 h-3.5" />
-              {language === 'bn' ? 'লয়্যালটি পুরস্কার' : 'Loyalty Rewards'}
-            </span>
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-200 text-amber-950">
-              {language === 'bn' ? '১০ পয়েন্ট ফ্রি' : '10 Pts Free'}
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-950 animate-pulse" />
+            <span className="text-[11px] font-extrabold uppercase tracking-widest text-stone-950 font-serif">
+              GHOSH SWEET HOUSE
             </span>
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-bold font-bengali leading-tight">
-            {authModalMode === 'signup'
-              ? language === 'bn'
-                ? 'সাইন আপ ও মিষ্টি পয়েন্টস অর্জন করুন'
-                : 'Sign Up & Get Sweet Points'
-              : language === 'bn'
-              ? 'গ্রাহক অ্যাকাউন্টে লগইন'
-              : 'Customer Account Login'}
+          <h2 className="text-xl sm:text-2xl font-black font-serif leading-tight">
+            {language === 'bn' ? 'স্বাগতম!' : 'Welcome!'}
           </h2>
-          <p className="text-xs sm:text-sm font-medium text-stone-900/90 mt-1">
-            {language === 'bn'
-              ? 'মোবাইল ওটিপি যাচাই করে সুরক্ষিতভাবে পয়েন্ট ও ৫% ছাড় উপভোগ করুন।'
-              : 'Verify your phone via OTP to access your Sweet Points & 5% OFF.'}
+          <p className="text-xs font-semibold text-stone-900/90 mt-0.5">
+            {language === 'bn' ? 'ঘোষ মিষ্টান্ন ভাণ্ডার — খাঁটি মিষ্টি ও ঐতিহ্যের স্বাদ' : 'Ghosh Sweet House — Artisanal Bengali Confections'}
           </p>
         </div>
 
-        {/* Tab Switcher */}
-        <div
-          className={`flex border-b text-xs sm:text-sm font-bold flex-shrink-0 ${
-            isDark ? 'border-amber-500/20 bg-stone-950/60' : 'border-amber-900/10 bg-amber-50/50'
-          }`}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setAuthModalMode('signup');
-              setStep('phone');
-              setErrorMsg('');
-              setSuccessMsg('');
-            }}
-            id="auth-tab-signup"
-            className={`flex-1 py-3 text-center transition-colors border-b-2 font-bengali flex items-center justify-center gap-1.5 ${
-              authModalMode === 'signup'
-                ? 'border-amber-500 text-amber-400 font-extrabold bg-amber-500/10'
-                : 'border-transparent opacity-60 hover:opacity-100'
-            }`}
-          >
-            <Gift className="w-4 h-4" />
-            <span>{language === 'bn' ? 'নতুন সাইন আপ (+১০ পয়েন্ট)' : 'Sign Up (+10 Pts)'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setAuthModalMode('login');
-              setStep('phone');
-              setErrorMsg('');
-              setSuccessMsg('');
-            }}
-            id="auth-tab-login"
-            className={`flex-1 py-3 text-center transition-colors border-b-2 font-bengali flex items-center justify-center gap-1.5 ${
-              authModalMode === 'login'
-                ? 'border-amber-500 text-amber-400 font-extrabold bg-amber-500/10'
-                : 'border-transparent opacity-60 hover:opacity-100'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>{language === 'bn' ? 'লগইন (ওটিপি)' : 'Log In (OTP)'}</span>
-          </button>
-        </div>
-
-        {/* Body Form */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
-          {/* Rules & Benefits Banner */}
-          <div
-            className={`p-3.5 rounded-2xl border text-xs space-y-1.5 leading-relaxed ${
-              isDark ? 'bg-amber-950/20 border-amber-500/20 text-amber-200/90' : 'bg-amber-50 border-amber-200 text-amber-950'
-            }`}
-          >
-            <div className="font-bold font-bengali flex items-center gap-1.5 text-amber-400">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{language === 'bn' ? 'সুইট পয়েন্টস ও ডিসকাউন্ট পলিসি:' : 'Sweet Points & Discount Policy:'}</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-5 font-medium">
-              <div>🍬 {language === 'bn' ? '১০ মিষ্টি পয়েন্ট (₹৫.০০) সাইন আপেই' : '10 Sweet Points (₹5.00) on signup'}</div>
-              <div>🎁 {language === 'bn' ? 'প্রথম ৫টি অর্ডারে ৫% ছাড় (মিনিমাম ₹১০০)' : '5% OFF first 5 orders (Min ₹100)'}</div>
-              <div>⭐ {language === 'bn' ? 'প্রতি ₹১০০ ক্রয়ে ৫ মিষ্টি পয়েন্ট' : 'Earn 5 points per ₹100 spent'}</div>
-              <div>💰 {language === 'bn' ? '১ মিষ্টি পয়েন্ট = ₹০.৫০ ক্যাশ ছাড়' : '1 Sweet Point = ₹0.50 discount'}</div>
-            </div>
+        {/* Global Feedback Messages */}
+        {errorMsg && (
+          <div className="mx-5 mt-4 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs flex items-center gap-2 animate-fade-in">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{errorMsg}</span>
           </div>
+        )}
 
-          {/* Feedback messages */}
-          {errorMsg && (
-            <div className="p-3 rounded-xl border border-red-500/40 bg-red-500/10 text-red-500 text-xs sm:text-sm flex items-start gap-2 animate-shake">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>{errorMsg}</span>
+        {successMsg && (
+          <div className="mx-5 mt-4 p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2 animate-fade-in font-medium">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            <span>{successMsg}</span>
+          </div>
+        )}
+
+        {/* Dynamic Screen Content */}
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1">
+          {/* ================================================================= */}
+          {/* SCREEN 1: WELCOME CHOOSER (New Customer vs Existing Customer)     */}
+          {/* ================================================================= */}
+          {screen === 'selection' && (
+            <div className="space-y-5 animate-fade-in py-1">
+              <div className="text-center space-y-1 mb-6">
+                <span className="text-xs uppercase tracking-wider text-amber-500 font-bold font-royal">
+                  {language === 'bn' ? 'লগইন বা সাইন আপ নির্বাচন করুন' : 'Select an Authentication Option'}
+                </span>
+                <p className="text-xs text-stone-400">
+                  {language === 'bn'
+                    ? 'আপনার মোবাইল নম্বর দিয়ে সহজেই অ্যাকাউন্ট তৈরি বা সাইন ইন করুন।'
+                    : 'Choose your customer option to access orders & loyalty points.'}
+                </p>
+              </div>
+
+              {/* Option 1: New Customer — Create Account */}
+              <button
+                type="button"
+                onClick={() => {
+                  setScreen('signup_form');
+                  setActiveFlow('signup');
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                id="auth-choose-new-customer"
+                className="w-full p-4 rounded-2xl border-2 border-amber-500/60 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent hover:border-amber-400 hover:from-amber-500/25 text-left transition-all active:scale-[0.98] shadow-md group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-amber-500 text-stone-950 flex items-center justify-center font-bold shadow-md group-hover:scale-105 transition-transform">
+                      <User className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-400 block font-mono">
+                        {language === 'bn' ? '👤 নতুন গ্রাহক' : '👤 New Customer'}
+                      </span>
+                      <h3 className="text-base font-bold text-stone-100 font-serif">
+                        {language === 'bn' ? 'নতুন অ্যাকাউন্ট তৈরি করুন' : 'Create Account'}
+                      </h3>
+                      <p className="text-[11px] text-stone-400 mt-0.5">
+                        {language === 'bn'
+                          ? 'নাম, ঠিকানা ও পিন কোড দিয়ে নতুন প্রোফাইল তৈরি করুন (+১০ পয়েন্ট উপহার)'
+                          : 'Sign up with name & address to earn 10 Sweet Points'}
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-amber-400 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+
+              {/* Option 2: Existing Customer — Sign In */}
+              <button
+                type="button"
+                onClick={() => {
+                  setScreen('signin_form');
+                  setActiveFlow('signin');
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                id="auth-choose-existing-customer"
+                className="w-full p-4 rounded-2xl border-2 border-stone-700 bg-stone-900/60 hover:border-amber-500/50 hover:bg-stone-900/90 text-left transition-all active:scale-[0.98] shadow-sm group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-stone-800 border border-stone-700 text-amber-400 flex items-center justify-center font-bold group-hover:scale-105 transition-transform">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-stone-400 block font-mono">
+                        {language === 'bn' ? '🔐 পুরনো গ্রাহক' : '🔐 Existing Customer'}
+                      </span>
+                      <h3 className="text-base font-bold text-stone-100 font-serif">
+                        {language === 'bn' ? 'লগইন করুন' : 'Sign In'}
+                      </h3>
+                      <p className="text-[11px] text-stone-400 mt-0.5">
+                        {language === 'bn'
+                          ? 'শুধুমাত্র মোবাইল নম্বরে ওটিপি দিয়ে তাৎক্ষণিক লগইন'
+                          : 'Quick 1-step sign in with your verified mobile number'}
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-stone-400 group-hover:translate-x-1 group-hover:text-amber-400 transition-all" />
+                </div>
+              </button>
+
+              {/* Divider & Security Badge */}
+              <div className="pt-4 border-t border-amber-500/15 text-center">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-semibold">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>
+                    {language === 'bn'
+                      ? 'মোবাইল OTP দ্বারা নিরাপদ লগইন'
+                      : 'Secure login with mobile OTP'}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
-          {successMsg && (
-            <div className="p-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-500 text-xs sm:text-sm flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          )}
+          {/* ================================================================= */}
+          {/* SCREEN 2: NEW CUSTOMER — SIGN UP FORM                             */}
+          {/* ================================================================= */}
+          {screen === 'signup_form' && (
+            <form onSubmit={handleNewCustomerSendOtp} className="space-y-4 animate-fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-amber-500/15">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-500 font-mono">
+                    {language === 'bn' ? 'নতুন গ্রাহক?' : 'New Customer?'}
+                  </span>
+                  <h3 className="text-base font-bold font-serif text-stone-100">
+                    {language === 'bn' ? 'নতুন অ্যাকাউন্ট তৈরি করুন' : 'Create Account'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setScreen('selection')}
+                  className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>{language === 'bn' ? 'অন্য অপশন' : 'Back'}</span>
+                </button>
+              </div>
 
-          {/* STEP 1: Enter Mobile Number */}
-          {step === 'phone' && (
-            <form onSubmit={handleSendOtp} className="space-y-4" id="auth-phone-form">
+              {/* 1. Full Name */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider mb-1 opacity-80">
-                  {language === 'bn' ? '১০ সংখ্যার মোবাইল নম্বর *' : 'Mobile Number (10 Digits) *'}
+                <label className="block text-xs font-bold text-amber-300 mb-1">
+                  {language === 'bn' ? 'পুরো নাম *' : 'Full Name *'}
                 </label>
                 <div className="relative">
-                  <div className="absolute left-3 top-2.5 flex items-center gap-1 text-sm font-semibold opacity-60">
-                    <Phone className="w-4 h-4" />
-                    <span>+91</span>
-                  </div>
+                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder={language === 'bn' ? 'যেমন: বাপ্পান ঘোষ' : 'e.g. Rahul Sharma'}
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* 2. Mobile Number */}
+              <div>
+                <label className="block text-xs font-bold text-amber-300 mb-1">
+                  {language === 'bn' ? 'মোবাইল নম্বর (১০ সংখ্যা) *' : 'Mobile Number (10 digits) *'}
+                </label>
+                <div className="relative flex">
+                  <span className="inline-flex items-center px-3 rounded-l-xl bg-stone-800 border border-r-0 border-stone-700 text-amber-400 font-mono text-xs font-bold">
+                    +91
+                  </span>
                   <input
                     type="tel"
                     required
                     maxLength={10}
-                    value={mobile}
-                    onChange={(e) => setMobile(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder={language === 'bn' ? '৯৮৭৬৫ ৪৩২১০' : '98765 43210'}
-                    className={`w-full pl-16 pr-3 py-2.5 rounded-xl border text-sm outline-none transition-colors font-mono tracking-wider ${
-                      isDark
-                        ? 'bg-stone-900 border-amber-900/60 focus:border-amber-400 text-stone-100 placeholder-stone-500'
-                        : 'bg-stone-50 border-stone-300 focus:border-amber-500 text-stone-900 placeholder-stone-400'
-                    }`}
+                    value={mobileNumber}
+                    onChange={(e) => setMobileNumber(sanitizeMobile(e.target.value))}
+                    placeholder="9876543210"
+                    className="w-full px-3 py-2.5 rounded-r-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs font-mono font-bold tracking-wider focus:border-amber-500 focus:outline-none"
                   />
                 </div>
-                <span className="text-[11px] opacity-60 mt-1 block">
-                  {language === 'bn'
-                    ? 'আপনার মোবাইল নম্বরে ৬ সংখ্যার ওটিপি ভেরিফিকেশন কোড পাঠানো হবে।'
-                    : 'A 6-digit OTP verification code will be sent to this number.'}
-                </span>
               </div>
 
-              {authModalMode === 'signup' && (
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1 opacity-80">
-                    {language === 'bn' ? 'গ্রাহকের পুরো নাম (ঐচ্ছিক)' : 'Full Name (Optional)'}
-                  </label>
-                  <div className="relative">
-                    <User className="w-4 h-4 absolute left-3 top-3 opacity-50" />
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder={language === 'bn' ? 'আপনার নাম লিখুন' : 'Enter your name'}
-                      className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none transition-colors ${
-                        isDark
-                          ? 'bg-stone-900 border-amber-900/60 focus:border-amber-400 text-stone-100 placeholder-stone-500'
-                          : 'bg-stone-50 border-stone-300 focus:border-amber-500 text-stone-900 placeholder-stone-400'
-                      }`}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                id="send-otp-btn"
-                className="w-full mt-2 py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg hover:shadow-amber-500/25 active:scale-95 transition-all disabled:opacity-60"
-              >
-                {isLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <KeyRound className="w-4 h-4 text-stone-950" />
-                )}
-                <span>
-                  {language === 'bn' ? 'ওটিপি পাঠান (Send OTP)' : 'Send OTP'}
-                </span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
-          )}
-
-          {/* STEP 2: Enter OTP Code */}
-          {step === 'otp' && (
-            <form onSubmit={handleVerifyOtp} className="space-y-4" id="auth-otp-form">
+              {/* 3. Optional Email */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold uppercase tracking-wider opacity-80">
-                    {language === 'bn' ? '৬ সংখ্যার ওটিপি কোড *' : '6-Digit OTP Code *'}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setStep('phone')}
-                    className="text-xs text-amber-400 hover:underline"
-                  >
-                    {language === 'bn' ? 'নম্বর পরিবর্তন' : 'Change Number'}
-                  </button>
-                </div>
+                <label className="block text-xs font-bold text-stone-300 mb-1">
+                  {language === 'bn' ? 'ইমেল (ঐচ্ছিক)' : 'Optional Email'}
+                </label>
                 <div className="relative">
-                  <KeyRound className="w-4 h-4 absolute left-3 top-3 opacity-50" />
+                  <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                   <input
-                    type="text"
-                    required
-                    maxLength={6}
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="123456"
-                    className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-base outline-none transition-colors font-mono tracking-widest text-center ${
-                      isDark
-                        ? 'bg-stone-900 border-amber-900/60 focus:border-amber-400 text-stone-100 placeholder-stone-500'
-                        : 'bg-stone-50 border-stone-300 focus:border-amber-500 text-stone-900 placeholder-stone-400'
-                    }`}
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs focus:border-amber-500 focus:outline-none"
                   />
                 </div>
-                {otpSentHint && (
-                  <span className="text-[11px] text-emerald-400 mt-1 block">
-                    ⚡ {language === 'bn' ? `পরীক্ষামূলক ওটিপি কোড: ${otpSentHint}` : `Test OTP Code: ${otpSentHint}`}
-                  </span>
-                )}
               </div>
 
+              {/* 4. Delivery Address */}
+              <div>
+                <label className="block text-xs font-bold text-amber-300 mb-1">
+                  {language === 'bn' ? 'ডেলিভারি ঠিকানা (গ্রাম / এলাকা / বাড়ি) *' : 'Delivery Address *'}
+                </label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 absolute left-3 top-3 text-stone-400" />
+                  <textarea
+                    rows={2}
+                    required
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    placeholder={
+                      language === 'bn'
+                        ? 'বাড়ি নম্বর, গ্রাম, ল্যান্ডমার্ক ইত্যাদি...'
+                        : 'House No, Village/Area, Landmark...'
+                    }
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* 5. PIN Code */}
+              <div>
+                <label className="block text-xs font-bold text-amber-300 mb-1">
+                  {language === 'bn' ? 'পিন কোড (PIN Code - ৬ সংখ্যা) *' : 'PIN Code *'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  value={pinCode}
+                  onChange={(e) => setPinCode(sanitizePin(e.target.value))}
+                  placeholder="732201"
+                  className="w-full px-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs font-mono font-bold tracking-widest focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Send OTP Button */}
               <button
                 type="submit"
                 disabled={isLoading}
-                id="verify-otp-btn"
-                className="w-full mt-2 py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg hover:shadow-amber-500/25 active:scale-95 transition-all disabled:opacity-60"
+                id="signup-send-otp-btn"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 mt-2"
               >
                 {isLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                    <span>{language === 'bn' ? 'ওটিপি পাঠানো হচ্ছে...' : 'Sending OTP...'}</span>
+                  </>
                 ) : (
-                  <ShieldCheck className="w-4 h-4 text-stone-950" />
+                  <>
+                    <Phone className="w-4 h-4" />
+                    <span>{language === 'bn' ? 'OTP পাঠান' : 'Send OTP'}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
                 )}
-                <span>
-                  {language === 'bn' ? 'ওটিপি যাচাই করুন (Verify OTP)' : 'Verify OTP'}
-                </span>
-                <ArrowRight className="w-4 h-4" />
               </button>
 
-              <div className="text-center pt-1">
+              <div className="text-center pt-2">
                 <button
                   type="button"
-                  onClick={handleSendOtp}
-                  disabled={isLoading}
-                  className="text-xs text-amber-400/90 hover:text-amber-300 underline"
+                  onClick={() => {
+                    setScreen('signin_form');
+                    setActiveFlow('signin');
+                  }}
+                  className="text-xs text-stone-400 hover:text-amber-400"
                 >
-                  {language === 'bn' ? 'ওটিপি পাননি? পুনরায় পাঠান' : "Didn't receive OTP? Resend"}
+                  {language === 'bn'
+                    ? 'আগে থেকেই অ্যাকাউন্ট আছে? লগইন করুন'
+                    : 'Already have an account? Sign In'}
                 </button>
               </div>
             </form>
           )}
 
-          {/* STEP 3: Enter Name (for new signups without name) */}
-          {step === 'name' && (
-            <form onSubmit={handleNameSubmit} className="space-y-4" id="auth-name-form">
+          {/* ================================================================= */}
+          {/* SCREEN 3: EXISTING CUSTOMER — SIGN IN FORM                        */}
+          {/* ================================================================= */}
+          {screen === 'signin_form' && (
+            <form onSubmit={handleExistingCustomerSendOtp} className="space-y-4 animate-fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-amber-500/15">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-500 font-mono">
+                    {language === 'bn' ? 'আগে থেকেই অ্যাকাউন্ট আছে?' : 'Already have an account?'}
+                  </span>
+                  <h3 className="text-base font-bold font-serif text-stone-100">
+                    {language === 'bn' ? 'লগইন করুন' : 'Sign In'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setScreen('selection')}
+                  className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>{language === 'bn' ? 'অন্য অপশন' : 'Back'}</span>
+                </button>
+              </div>
+
+              {/* Mobile Number Field */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider mb-1 opacity-80">
-                  {language === 'bn' ? 'আপনার পুরো নাম লিখুন *' : 'Enter Your Full Name *'}
+                <label className="block text-xs font-bold text-amber-300 mb-1">
+                  {language === 'bn' ? 'নিবন্ধিত মোবাইল নম্বর *' : 'Registered Mobile Number *'}
+                </label>
+                <div className="relative flex">
+                  <span className="inline-flex items-center px-3 rounded-l-xl bg-stone-800 border border-r-0 border-stone-700 text-amber-400 font-mono text-xs font-bold">
+                    +91
+                  </span>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    value={mobileNumber}
+                    onChange={(e) => setMobileNumber(sanitizeMobile(e.target.value))}
+                    placeholder="9876543210"
+                    className="w-full px-3 py-2.5 rounded-r-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs font-mono font-bold tracking-wider focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+                <p className="text-[11px] text-stone-400 mt-1">
+                  {language === 'bn'
+                    ? 'আপনার মোবাইল নম্বরে ৬ সংখ্যার ওটিপি কোড পাঠানো হবে।'
+                    : 'We will send a 6-digit OTP code to verify your identity.'}
+                </p>
+              </div>
+
+              {/* Send OTP Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                id="signin-send-otp-btn"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 mt-4"
+              >
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                    <span>{language === 'bn' ? 'ওটিপি পাঠানো হচ্ছে...' : 'Sending OTP...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>{language === 'bn' ? 'Send OTP / ওটিপি পাঠান' : 'Send OTP'}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScreen('signup_form');
+                    setActiveFlow('signup');
+                  }}
+                  className="text-xs text-stone-400 hover:text-amber-400"
+                >
+                  {language === 'bn'
+                    ? 'নতুন গ্রাহক? অ্যাকাউন্ট তৈরি করুন'
+                    : 'New Customer? Create Account'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* ================================================================= */}
+          {/* SCREEN 4: OTP VERIFICATION                                        */}
+          {/* ================================================================= */}
+          {screen === 'otp_verification' && (
+            <form onSubmit={handleVerifyOtp} className="space-y-4 animate-fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-amber-500/15">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-500 font-mono">
+                    {activeFlow === 'signup' ? 'Sign Up Verification' : 'Sign In Verification'}
+                  </span>
+                  <h3 className="text-base font-bold font-serif text-stone-100">
+                    {language === 'bn' ? 'ওটিপি যাচাই করুন' : 'Verify Mobile OTP'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setScreen(activeFlow === 'signup' ? 'signup_form' : 'signin_form')}
+                  className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>{language === 'bn' ? 'নম্বর পরিবর্তন' : 'Change Phone'}</span>
+                </button>
+              </div>
+
+              {/* Number Badge */}
+              <div className="p-3 rounded-xl bg-stone-900/80 border border-stone-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-amber-500" />
+                  <span className="font-mono font-bold text-xs text-stone-200">
+                    +91 {mobileNumber}
+                  </span>
+                </div>
+                <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>{language === 'bn' ? 'ওটিপি প্রেরিত' : 'OTP Dispatched'}</span>
+                </span>
+              </div>
+
+              {/* Preview Code Hint */}
+              {otpSentHint && (
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-[11px] flex items-center justify-between">
+                  <span>
+                    {language === 'bn' ? 'পরীক্ষামূলক কোড (Test OTP):' : 'Preview Test Code:'}
+                  </span>
+                  <span className="font-mono font-extrabold tracking-widest text-amber-400 text-xs">
+                    {otpSentHint}
+                  </span>
+                </div>
+              )}
+
+              {/* OTP Input Field */}
+              <div>
+                <label className="block text-xs font-bold text-amber-300 mb-1.5">
+                  {language === 'bn' ? '৬ সংখ্যার ওটিপি কোড লিখুন *' : 'Enter 6-digit OTP *'}
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 absolute left-3 top-3 opacity-50" />
+                  <KeyRound className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                   <input
                     type="text"
                     required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={language === 'bn' ? 'আপনার নাম লিখুন' : 'Enter your name'}
-                    className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none transition-colors ${
-                      isDark
-                        ? 'bg-stone-900 border-amber-900/60 focus:border-amber-400 text-stone-100 placeholder-stone-500'
-                        : 'bg-stone-50 border-stone-300 focus:border-amber-500 text-stone-900 placeholder-stone-400'
-                    }`}
+                    maxLength={6}
+                    autoFocus
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="123456"
+                    className="w-full pl-9 pr-3 py-3 rounded-xl bg-stone-900 border border-amber-500/40 text-amber-400 text-center font-mono font-extrabold text-lg tracking-[0.35em] focus:border-amber-400 focus:outline-none"
                   />
                 </div>
               </div>
 
+              {/* Resend Action */}
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="text-stone-400">
+                  {language === 'bn' ? 'কোড পাননি?' : "Didn't receive code?"}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={resendCooldown > 0 || isLoading}
+                  className="text-amber-400 hover:text-amber-300 font-semibold disabled:opacity-50"
+                >
+                  {resendCooldown > 0
+                    ? `${language === 'bn' ? 'পুনরায় পাঠান' : 'Resend in'} (${resendCooldown}s)`
+                    : language === 'bn' ? 'আবার ওটিপি পাঠান' : 'Resend OTP'}
+                </button>
+              </div>
+
+              {/* Submit Verification Button */}
               <button
                 type="submit"
                 disabled={isLoading}
-                id="create-profile-btn"
-                className="w-full mt-2 py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg hover:shadow-amber-500/25 active:scale-95 transition-all disabled:opacity-60"
+                id="otp-verify-submit-btn"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 mt-4"
               >
                 {isLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                    <span>{language === 'bn' ? 'যাচাই করা হচ্ছে...' : 'Verifying with Firebase...'}</span>
+                  </>
                 ) : (
-                  <Sparkles className="w-4 h-4 text-stone-950" />
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>
+                      {activeFlow === 'signup'
+                        ? language === 'bn' ? 'যাচাই ও অ্যাকাউন্ট তৈরি করুন' : 'Verify & Create Account'
+                        : language === 'bn' ? 'যাচাই ও লগইন করুন' : 'Verify & Sign In'}
+                    </span>
+                  </>
                 )}
-                <span>
-                  {language === 'bn'
-                    ? 'প্রোফাইল তৈরি করুন ও ১০ পয়েন্ট নিন'
-                    : 'Create Profile & Get 10 Points'}
-                </span>
-                <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}
 
+          {/* ================================================================= */}
+          {/* SCREEN 5: COMPLETE PROFILE (If Auth user has no Firestore profile)*/}
+          {/* ================================================================= */}
+          {screen === 'complete_profile' && (
+            <form onSubmit={handleCompleteProfileSubmit} className="space-y-4 animate-fade-in">
+              <div className="pb-2 border-b border-amber-500/15">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-500 font-mono">
+                  {language === 'bn' ? 'প্রথমবার স্বাগতম!' : 'First-time Welcome!'}
+                </span>
+                <h3 className="text-base font-bold font-serif text-stone-100">
+                  {language === 'bn' ? 'আপনার প্রোফাইল সম্পূর্ণ করুন' : 'Please Complete Your Profile'}
+                </h3>
+                <p className="text-[11px] text-stone-400 mt-0.5">
+                  {language === 'bn'
+                    ? 'আপনার মোবাইল নম্বর সফলভাবে যাচাই হয়েছে। মিষ্টি ডেলিভারি ও লয়্যালটি উপহারের জন্য তথ্য দিন।'
+                    : 'Phone verified! Please enter your details for delivery and loyalty rewards.'}
+                </p>
+              </div>
 
+              {/* Full Name */}
+              <div>
+                <label className="block text-xs font-bold text-amber-300 mb-1">
+                  {language === 'bn' ? 'পুরো নাম *' : 'Full Name *'}
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder={language === 'bn' ? 'যেমন: বাপ্পান ঘোষ' : 'e.g. Rahul Sharma'}
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Delivery Address */}
+              <div>
+                <label className="block text-xs font-bold text-amber-300 mb-1">
+                  {language === 'bn' ? 'ডেলিভারি ঠিকানা *' : 'Delivery Address *'}
+                </label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 absolute left-3 top-3 text-stone-400" />
+                  <textarea
+                    rows={2}
+                    required
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    placeholder={
+                      language === 'bn'
+                        ? 'বাড়ি নম্বর, গ্রাম, এলাকা, ল্যান্ডমার্ক...'
+                        : 'House No, Village/Area, Landmark...'
+                    }
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* PIN Code */}
+              <div>
+                <label className="block text-xs font-bold text-amber-300 mb-1">
+                  {language === 'bn' ? 'পিন কোড (PIN Code) *' : 'PIN Code *'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  value={pinCode}
+                  onChange={(e) => setPinCode(sanitizePin(e.target.value))}
+                  placeholder="732201"
+                  className="w-full px-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs font-mono font-bold tracking-widest focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Optional Email */}
+              <div>
+                <label className="block text-xs font-bold text-stone-300 mb-1">
+                  {language === 'bn' ? 'ইমেল (ঐচ্ছিক)' : 'Optional Email'}
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  className="w-full px-3 py-2 rounded-xl bg-stone-900 border border-stone-700 text-stone-100 text-xs focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                id="complete-profile-submit-btn"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 mt-4"
+              >
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
+                    <span>{language === 'bn' ? 'সংরক্ষণ করা হচ্ছে...' : 'Saving Profile in Firestore...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <FileCheck2 className="w-4 h-4" />
+                    <span>{language === 'bn' ? 'প্রোফাইল সংরক্ষণ করুন ও অ্যাকাউন্টে যান' : 'Save Profile & Open Account'}</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

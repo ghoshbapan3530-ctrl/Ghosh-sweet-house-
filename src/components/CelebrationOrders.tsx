@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useShop } from '../context/ShopContext';
-import { Heart, FileSpreadsheet, Phone, Sparkles, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Heart, Send, Phone, Sparkles, CheckCircle2, RefreshCw } from 'lucide-react';
 import { ScrollReveal } from './ScrollReveal';
 
 export const CelebrationOrders: React.FC = () => {
@@ -30,7 +30,7 @@ export const CelebrationOrders: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      // Record directly into order history and synchronize directly to Google Sheets
+      // Record directly into order history and notify store in real-time
       addOrderToHistory({
         items: [
           {
@@ -151,7 +151,7 @@ export const CelebrationOrders: React.FC = () => {
               </ScrollReveal>
             </div>
 
-            {/* Right Column: Direct Google Sheets Bulk Booking Form */}
+            {/* Right Column: Direct Bulk Booking Form */}
             <div className="lg:col-span-6">
               <ScrollReveal direction="right" distance={24} duration={0.6}>
                 <div className={`p-6 sm:p-8 rounded-3xl border ${
@@ -167,11 +167,11 @@ export const CelebrationOrders: React.FC = () => {
                       </span>
                     </h3>
                     <span className="text-xs opacity-80 font-bengali">
-                      {language === 'bn' ? 'সরাসরি Google Sheets ও দোকানে ইনকোয়ারি জমা দিন' : 'Directly record inquiry into Google Sheets'}
+                      {language === 'bn' ? 'সরাসরি দোকানে ইনকোয়ারি জমা দিন' : 'Directly record inquiry to store'}
                     </span>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                    <FileSpreadsheet className="w-5 h-5" />
+                    <Send className="w-5 h-5" />
                   </div>
                 </div>
 
@@ -186,8 +186,8 @@ export const CelebrationOrders: React.FC = () => {
                       </h4>
                       <div className="mt-2.5 p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 text-xs text-left">
                         <p className="font-semibold flex items-center gap-1.5 text-emerald-300">
-                          <FileSpreadsheet className="w-3.5 h-3.5" />
-                          <span>{language === 'bn' ? 'Google Sheets-এ সরাসরি নথিবদ্ধ' : 'Recorded in Google Sheets'}</span>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>{language === 'bn' ? 'স্টোরে সরাসরি নথিবদ্ধ হয়েছে' : 'Recorded in Store System'}</span>
                         </p>
                         <p className="text-[11px] text-emerald-100/80 mt-1">
                           {language === 'bn'
@@ -284,11 +284,11 @@ export const CelebrationOrders: React.FC = () => {
                         {isSubmitting ? (
                           <>
                             <RefreshCw className="w-4 h-4 animate-spin text-stone-950" />
-                            <span>{language === 'bn' ? 'Google Sheets-এ পাঠানো হচ্ছে...' : 'Sending to Google Sheets...'}</span>
+                            <span>{language === 'bn' ? 'জমা দেওয়া হচ্ছে...' : 'Submitting Inquiry...'}</span>
                           </>
                         ) : (
                           <>
-                            <FileSpreadsheet className="w-4 h-4 text-stone-950" />
+                            <Send className="w-4 h-4 text-stone-950" />
                             <span>{t.celebrationFormSend}</span>
                           </>
                         )}

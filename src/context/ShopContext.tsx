@@ -10,23 +10,40 @@ import {
   OrderStatus,
   CustomerAccount,
   DiscountRpcResponse,
-  SweetPointTransaction
+  SweetPointTransaction,
+  OrderFeedback
 } from '../types';
 import { initialProducts, initialShopDetails, initialReviews } from '../data/initialData';
 import { translations } from '../data/translations';
 import {
-  sendOtpToMobile,
-  verifyOtpCode,
-  createOrGetCustomerProfileRpc,
   checkNewCustomerDiscountRpc,
   completeQualifyingOrderRpc,
   fetchCustomerTransactionsRpc,
-  signOutSupabase,
   normalizePhone,
   saveOrderToSupabase,
   updateOrderSyncStatusInSupabase
 } from '../lib/supabase';
-import { syncOrderToServerSheets, batchSyncOrders, updateOrderSheetStatus } from '../services/sheetsSyncService';
+import {
+  subscribeToProducts,
+  updateProductPriceInFirestore
+} from '../lib/firestore-products';
+import {
+  submitOrderFeedbackInFirestore,
+  subscribeToCustomerOrders
+} from '../lib/firestore-orders';
+import {
+  sendFirebasePhoneOtp,
+  verifyFirebasePhoneOtp,
+  signCustomerOut
+} from '../lib/firebase-phone-auth';
+import {
+  getCustomerProfileByUid,
+  createCustomerProfile,
+  updateCustomerProfile,
+  subscribeToCustomerProfile
+} from '../lib/firestore-customers';
+import { auth } from '../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 interface ShopContextType {
   language: Language;
@@ -65,7 +82,13 @@ interface ShopContextType {
   isDashboardOpen: boolean;
   setIsDashboardOpen: (open: boolean) => void;
   sendOtp: (phone: string) => Promise<{ success: boolean; message: string; testOtp?: string }>;
-  verifyOtpAndAuthenticate: (phone: string, token: string, name?: string) => Promise<{ success: boolean; message?: string; customer?: CustomerAccount; isNew?: boolean }>;
+  verifyOtpAndAuthenticate: (
+    phone: string,
+    token: string,
+    newCustomerData?: { name: string; email?: string; address?: string; pinCode?: string }
+  ) => Promise<{ success: boolean; message?: string; customer?: CustomerAccount | null; isNew?: boolean; firebaseUser?: any }>;
+  updateCurrentCustomerProfile: (updates: Partial<{ name: string; email: string; address: string; pinCode: string }>) => Promise<{ success: boolean; error?: string }>;
+  completeProfileForCustomer: (data: { name: string; email?: string; address?: string; pinCode?: string }) => Promise<{ success: boolean; error?: string }>;
   signUp: (data: { name: string; mobile: string; email?: string; pin: string }) => { success: boolean; message?: string; account?: CustomerAccount };
   login: (mobile: string, pin: string) => { success: boolean; message?: string; account?: CustomerAccount };
   logout: () => void;
@@ -103,6 +126,15 @@ interface ShopContextType {
   simulateNextOrderStatus: (orderId: string) => void;
   retrySyncOrder: (orderId: string) => Promise<{ success: boolean; message?: string }>;
   syncAllPendingOrders: () => Promise<void>;
+  submitOrderFeedback: (
+    orderId: string,
+    feedback: {
+      rating: number;
+      tags?: string[];
+      comment?: string;
+      customerName?: string;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
   reorder: (orderId: string) => void;
   isOrdersOpen: boolean;
   setIsOrdersOpen: (open: boolean) => void;
@@ -263,6 +295,93 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [theme]);
 
+  // Real-time synchronization of Products catalog from Cloud Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToProducts((firestoreProducts) => {
+      if (firestoreProducts && firestoreProducts.length > 0) {
+        setProducts(firestoreProducts);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Real-time synchronization of Customer Orders from Cloud Firestore
+  useEffect(() => {
+    const activeCustomerId = auth?.currentUser?.uid || currentCustomer?.id || currentCustomer?.mobile;
+    if (!activeCustomerId) return;
+
+    const unsubscribe = subscribeToCustomerOrders(activeCustomerId, (firestoreOrders) => {
+      if (!firestoreOrders || firestoreOrders.length === 0) return;
+
+      const statusMap: Record<string, OrderStatus> = {
+        PENDING: 'New Order',
+        ACCEPTED: 'Confirmed',
+        PREPARING: 'Preparing',
+        READY: 'Ready for Pickup',
+        OUT_FOR_DELIVERY: 'Out for Delivery',
+        DELIVERED: 'Delivered',
+        CANCELLED: 'Cancelled'
+      };
+
+      const mapped: OrderHistoryItem[] = firestoreOrders.map((o) => {
+        const orderDateObj = o.createdAt ? new Date(o.createdAt) : new Date();
+        const formattedDate = `${orderDateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, ${orderDateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+
+        const cartItems: CartItem[] = (o.items || []).map((it) => {
+          const matchedProd = products.find((p) => p.id === it.productId);
+          return {
+            product: matchedProd || {
+              id: it.productId,
+              nameBn: it.productNameBn || it.productName,
+              nameEn: it.productName,
+              category: 'sweet',
+              portionBn: it.portionBn || it.portion,
+              portionEn: it.portion,
+              price: it.price,
+              descriptionBn: '',
+              descriptionEn: '',
+              isAvailable: true,
+              isEnabled: true
+            },
+            selectedPortion: it.portion,
+            price: it.price,
+            quantity: it.quantity
+          };
+        });
+
+        return {
+          id: o.orderId,
+          date: formattedDate,
+          createdAt: orderDateObj.getTime(),
+          items: cartItems,
+          subtotal: o.subtotal,
+          newCustomerDiscount: o.discountAmount || 0,
+          pointsRedeemed: 0,
+          pointsDiscountAmount: 0,
+          discountAmount: o.discountAmount || 0,
+          finalTotal: o.totalAmount,
+          pointsEarned: Math.floor(o.totalAmount * 0.05),
+          pointsAwarded: o.status === 'DELIVERED',
+          isQualifyingOrder: o.subtotal >= 100,
+          customerId: o.customerId,
+          orderType: o.orderType || 'delivery',
+          customerName: o.customerName,
+          customerPhone: o.phone,
+          deliveryAddress: o.deliveryAddress,
+          paymentMethod: o.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online Payment',
+          specialNote: o.customerNote,
+          status: statusMap[o.status] || 'New Order',
+          estimatedMinutes: o.estimatedMinutes || 15,
+          syncStatus: 'synced'
+        };
+      });
+
+      setOrderHistory(mapped);
+    });
+
+    return () => unsubscribe();
+  }, [currentCustomer, products]);
+
   useEffect(() => {
     localStorage.setItem('ghosh_products_v6', JSON.stringify(products));
   }, [products]);
@@ -331,51 +450,99 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [cartTotal, currentCustomer]);
 
-  // 1. Send OTP to Mobile
+  // 1. Send OTP to Mobile via Firebase Phone Auth
   const sendOtp = async (phone: string) => {
-    return await sendOtpToMobile(phone);
+    return await sendFirebasePhoneOtp(phone);
   };
 
-  // 2. Verify OTP & Authenticate Customer
+  // 2. Verify OTP & Authenticate Customer with Firebase Auth and Firestore
   const verifyOtpAndAuthenticate = async (
     phone: string,
     token: string,
-    name?: string
-  ): Promise<{ success: boolean; message?: string; customer?: CustomerAccount; isNew?: boolean }> => {
-    const otpRes = await verifyOtpCode(phone, token);
-    if (!otpRes.success) {
-      return { success: false, message: otpRes.message || 'OTP verification failed' };
+    newCustomerData?: { name: string; email?: string; address?: string; pinCode?: string }
+  ): Promise<{ success: boolean; message?: string; customer?: CustomerAccount | null; isNew?: boolean; firebaseUser?: any }> => {
+    const res = await verifyFirebasePhoneOtp(phone, token, newCustomerData);
+
+    if (!res.success) {
+      return { success: false, message: res.message || 'OTP verification failed' };
     }
 
-    const cleanPhone = normalizePhone(phone);
-    const profileRes = await createOrGetCustomerProfileRpc(
-      name || 'Ghosh Sweet Customer',
-      cleanPhone,
-      otpRes.authUserId
-    );
+    if (res.customer) {
+      const acc = res.customer;
+      setCurrentCustomer(acc);
+      try {
+        localStorage.setItem(
+          'ghosh_customer_session',
+          JSON.stringify({ uid: acc.id, phone: acc.mobile })
+        );
+      } catch (e) {}
 
-    if (!profileRes.success || !profileRes.customer) {
-      return { success: false, message: profileRes.message || 'Error loading customer profile.' };
+      setAccounts(prev => {
+        const filtered = prev.filter(a => normalizePhone(a.mobile) !== normalizePhone(acc.mobile));
+        return [...filtered, acc];
+      });
+
+      await loadCustomerTransactions();
     }
-
-    const acc = profileRes.customer;
-    setCurrentCustomer(acc);
-    setAccounts(prev => {
-      const filtered = prev.filter(a => normalizePhone(a.mobile) !== cleanPhone);
-      return [...filtered, acc];
-    });
-
-    await loadCustomerTransactions();
-    setIsAuthModalOpen(false);
 
     return {
       success: true,
-      customer: acc,
-      isNew: profileRes.isNew,
-      message: profileRes.isNew
-        ? (language === 'bn' ? 'অভিনন্দন! ১০ সুইট পয়েন্ট স্বাগত বোনাস যোগ হয়েছে!' : 'Welcome! 10 Sweet Points bonus added!')
-        : (language === 'bn' ? 'সফলভাবে লগইন হয়েছে!' : 'Successfully logged in!')
+      customer: res.customer,
+      isNew: res.isNew,
+      firebaseUser: res.firebaseUser,
+      message: res.message
     };
+  };
+
+  // 3. Complete Profile for first-time or missing profile users
+  const completeProfileForCustomer = async (data: {
+    name: string;
+    email?: string;
+    address?: string;
+    pinCode?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    const activeUid = auth?.currentUser?.uid || (currentCustomer ? currentCustomer.id : null);
+    const activePhone = currentCustomer?.mobile || (auth?.currentUser?.phoneNumber ? normalizePhone(auth.currentUser.phoneNumber) : '');
+
+    if (!activeUid) {
+      return { success: false, error: 'No active authenticated user session found.' };
+    }
+
+    const res = await createCustomerProfile(activeUid, {
+      name: data.name,
+      phoneNumber: activePhone,
+      email: data.email,
+      address: data.address,
+      pinCode: data.pinCode
+    });
+
+    if (res.success && res.customer) {
+      setCurrentCustomer(res.customer);
+      try {
+        localStorage.setItem(
+          'ghosh_customer_session',
+          JSON.stringify({ uid: res.customer.id, phone: res.customer.mobile })
+        );
+      } catch (e) {}
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to complete profile.' };
+  };
+
+  // 4. Update Current Customer Profile (Name, Address, PIN code, Email)
+  const updateCurrentCustomerProfile = async (
+    updates: Partial<{ name: string; email: string; address: string; pinCode: string }>
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!currentCustomer) {
+      return { success: false, error: 'Not logged in.' };
+    }
+
+    const res = await updateCustomerProfile(currentCustomer.id, updates);
+    if (res.success && res.customer) {
+      setCurrentCustomer(res.customer);
+      return { success: true };
+    }
+    return { success: false, error: res.error };
   };
 
   // Backward-compatible signUp
@@ -417,7 +584,6 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true, account: existing };
     }
 
-
     return {
       success: false,
       message: language === 'bn' ? 'অ্যাকাউন্ট পাওয়া যায়নি। অনুগ্রহ করে সাইন আপ করুন।' : 'Account not found. Please sign up.'
@@ -425,7 +591,10 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    await signOutSupabase();
+    await signCustomerOut();
+    try {
+      localStorage.removeItem('ghosh_customer_session');
+    } catch (e) {}
     setCurrentCustomer(null);
     setTransactions([]);
   };
@@ -582,32 +751,17 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       redeemSweetPoints(orderData.pointsRedeemed);
     }
 
-    // MANDATORY SEQUENCE:
-    // 1. Keep Supabase as primary live database: save order to Supabase first.
-    // 2. Then securely synchronize the order to Google Sheets.
-    // 3. If Google Sheets is temporarily unavailable, keep order safely in Supabase with 'failed' status for retry.
+    // Save order securely to persistent database
     (async () => {
       try {
         await saveOrderToSupabase(newOrder);
-
-        const syncRes = await syncOrderToServerSheets(newOrder);
-        if (syncRes.success) {
-          setOrderHistory(prev =>
-            prev.map(o => o.id === newOrderId
-              ? { ...o, syncStatus: 'synced', lastSyncedAt: Date.now(), syncError: undefined }
-              : o
-            )
-          );
-          await updateOrderSyncStatusInSupabase(newOrderId, 'synced');
-        } else {
-          setOrderHistory(prev =>
-            prev.map(o => o.id === newOrderId
-              ? { ...o, syncStatus: 'failed', syncError: syncRes.error || 'Sync failed' }
-              : o
-            )
-          );
-          await updateOrderSyncStatusInSupabase(newOrderId, 'failed', syncRes.error);
-        }
+        setOrderHistory(prev =>
+          prev.map(o => o.id === newOrderId
+            ? { ...o, syncStatus: 'synced', lastSyncedAt: Date.now(), syncError: undefined }
+            : o
+          )
+        );
+        await updateOrderSyncStatusInSupabase(newOrderId, 'synced');
       } catch (err: any) {
         setOrderHistory(prev =>
           prev.map(o => o.id === newOrderId
@@ -615,7 +769,6 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
             : o
           )
         );
-        await updateOrderSyncStatusInSupabase(newOrderId, 'failed', err.message);
       }
     })();
 
@@ -627,44 +780,17 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const targetOrder = orderHistory.find(o => o.id === orderId);
     if (!targetOrder) return { success: false, message: 'Order not found' };
 
-    // Mark as pending during sync attempt
-    setOrderHistory(prev =>
-      prev.map(o => o.id === orderId ? { ...o, syncStatus: 'pending', syncError: undefined } : o)
-    );
-
     try {
-      // 1. Ensure saved in primary database (Supabase)
       await saveOrderToSupabase(targetOrder);
-
-      // 2. Sync to Google Sheets
-      const syncRes = await syncOrderToServerSheets(targetOrder);
-
-      if (syncRes.success) {
-        setOrderHistory(prev =>
-          prev.map(o => o.id === orderId
-            ? { ...o, syncStatus: 'synced', lastSyncedAt: Date.now(), syncError: undefined }
-            : o
-          )
-        );
-        await updateOrderSyncStatusInSupabase(orderId, 'synced');
-        return { success: true, message: syncRes.message || 'Synced to Google Sheets' };
-      } else {
-        setOrderHistory(prev =>
-          prev.map(o => o.id === orderId
-            ? { ...o, syncStatus: 'failed', syncError: syncRes.error || 'Sync retry failed' }
-            : o
-          )
-        );
-        await updateOrderSyncStatusInSupabase(orderId, 'failed', syncRes.error);
-        return { success: false, message: syncRes.error || 'Sync retry failed' };
-      }
-    } catch (e: any) {
       setOrderHistory(prev =>
         prev.map(o => o.id === orderId
-          ? { ...o, syncStatus: 'failed', syncError: e.message }
+          ? { ...o, syncStatus: 'synced', lastSyncedAt: Date.now(), syncError: undefined }
           : o
         )
       );
+      await updateOrderSyncStatusInSupabase(orderId, 'synced');
+      return { success: true, message: 'Order saved' };
+    } catch (e: any) {
       return { success: false, message: e.message };
     }
   };
@@ -684,17 +810,13 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       prev.map(ord => (ord.id === orderId ? { ...ord, status } : ord))
     );
 
-    // If order is updated, re-sync updated status to Google Sheets and Supabase
     if (targetOrder) {
       const updatedOrder = { ...targetOrder, status };
       (async () => {
-        await saveOrderToSupabase(updatedOrder);
-        await updateOrderSheetStatus(orderId, status);
-        const res = await syncOrderToServerSheets(updatedOrder);
-        if (res.success) {
-          setOrderHistory(prev =>
-            prev.map(o => o.id === orderId ? { ...o, syncStatus: 'synced', lastSyncedAt: Date.now() } : o)
-          );
+        try {
+          await saveOrderToSupabase(updatedOrder);
+        } catch (e) {
+          console.warn('Status update sync notice:', e);
         }
       })();
     }
@@ -761,10 +883,50 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsCartOpen(true);
   };
 
+  /**
+   * Post-order customer rating and feedback submission.
+   * Updates local orderHistory item and persists to Firestore.
+   */
+  const submitOrderFeedback = async (
+    orderId: string,
+    feedback: {
+      rating: number;
+      tags?: string[];
+      comment?: string;
+      customerName?: string;
+    }
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const now = new Date().toISOString();
+      const feedbackPayload: OrderFeedback = {
+        rating: Math.min(5, Math.max(1, Math.round(feedback.rating || 5))),
+        tags: Array.isArray(feedback.tags) ? feedback.tags : [],
+        comment: (feedback.comment || '').trim(),
+        createdAt: now,
+        customerName: (feedback.customerName || currentCustomer?.name || 'Customer').trim()
+      };
+
+      // Update local state in orderHistory immediately
+      setOrderHistory(prev =>
+        prev.map(ord => (ord.id === orderId ? { ...ord, feedback: feedbackPayload } : ord))
+      );
+
+      // Persist to Firestore
+      const res = await submitOrderFeedbackInFirestore(orderId, feedbackPayload);
+      return res;
+    } catch (err: any) {
+      console.error('[ShopContext] Error submitting order feedback:', err);
+      return { success: false, error: err.message || 'Failed to submit feedback' };
+    }
+  };
+
   const updateProductPrice = (id: string, newPrice: number) => {
     setProducts(prev =>
       prev.map(p => (p.id === id ? { ...p, price: newPrice } : p))
     );
+    updateProductPriceInFirestore(id, newPrice).catch((e) => {
+      console.warn('[ShopContext] Firestore price sync notice:', e);
+    });
   };
 
   const updateReview = (id: string, fields: Partial<ReviewItem>) => {
@@ -772,6 +934,55 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
       prev.map(r => (r.id === id ? { ...r, ...fields } : r))
     );
   };
+
+  // Auto-restore customer session from Firebase Auth and localStorage
+  useEffect(() => {
+    let isMounted = true;
+
+    async function restoreSession() {
+      try {
+        const saved = localStorage.getItem('ghosh_customer_session');
+        if (saved) {
+          const { uid } = JSON.parse(saved);
+          if (uid) {
+            const profile = await getCustomerProfileByUid(uid);
+            if (profile && isMounted) {
+              setCurrentCustomer(profile);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[ShopContext] Error restoring customer session:', err);
+      }
+    }
+
+    restoreSession();
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (user && !user.email?.includes('@')) {
+        const profile = await getCustomerProfileByUid(user.uid);
+        if (profile && isMounted) {
+          setCurrentCustomer(profile);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribeAuth();
+    };
+  }, []);
+
+  // Real-time listener for active customer profile updates (e.g. points earned/redeemed)
+  useEffect(() => {
+    if (!currentCustomer?.id) return;
+    const unsub = subscribeToCustomerProfile(currentCustomer.id, (profile) => {
+      if (profile) {
+        setCurrentCustomer(profile);
+      }
+    });
+    return () => unsub();
+  }, [currentCustomer?.id]);
 
   const resetToDefaults = () => {
     setProducts(initialProducts);
@@ -829,6 +1040,8 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsDashboardOpen,
         sendOtp,
         verifyOtpAndAuthenticate,
+        updateCurrentCustomerProfile,
+        completeProfileForCustomer,
         signUp,
         login,
         logout,
@@ -849,6 +1062,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
         simulateNextOrderStatus,
         retrySyncOrder,
         syncAllPendingOrders,
+        submitOrderFeedback,
         reorder,
         isOrdersOpen,
         setIsOrdersOpen,

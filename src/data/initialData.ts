@@ -38,6 +38,7 @@ export const initialProducts: ProductItem[] = [
     },
     badgeBn: 'রসগোল্লা • ৫ পিস',
     badgeEn: 'Signature • 5 pcs',
+    stockCount: 6, // Low stock (below default threshold 10)
     isBestSeller: true,
     isFeatured: true,
     descriptionBn: 'হালকা মিষ্টির তুলতুলে নরম ছোট দানার স্পঞ্জ রসগোল্লা। খাঁটি দেশি গরুর দুধের ছানায় তৈরি, রসে টইটম্বুর ও মুখে দিলেই গলে যায়।',
@@ -67,6 +68,7 @@ export const initialProducts: ProductItem[] = [
     },
     badgeBn: 'বড় রসগোল্লা • ৫ পিস',
     badgeEn: 'King Size • 5 pcs',
+    stockCount: 28, // Healthy stock
     isBestSeller: true,
     isFeatured: true,
     descriptionBn: 'ধবধবে সাদা বড় সাইজের স্পঞ্জি ছানার রসগোল্লা। রসে ভরপুর, এলাচের মন মাতানো সুবাস ও ঘোষ মিষ্টান্ন ভাণ্ডারের প্রধান আকর্ষণ।',
@@ -96,6 +98,7 @@ export const initialProducts: ProductItem[] = [
     },
     badgeBn: 'রয়েল মিষ্টি',
     badgeEn: 'Royal Sweet',
+    stockCount: 4, // Low stock (below default threshold 10)
     isBestSeller: true,
     isFeatured: true,
     descriptionBn: 'দেশি ঘিয়ে ভাজা রসালো ক্ষীরের সোনালী-বাদামি গোলাপজামুন। এলাচ ও গোলাপ জলের অতুলনীয় মিষ্টি।',
@@ -125,6 +128,7 @@ export const initialProducts: ProductItem[] = [
     },
     badgeBn: 'ঐতিহ্যবাহী',
     badgeEn: 'Heritage Special',
+    stockCount: 16, // Healthy stock
     isBestSeller: true,
     isFeatured: true,
     descriptionBn: 'নলেন গুড় ও ক্যারামেল স্বাদে প্রস্তুত বিশেষ লাল রঙের নরম তুলতুলে রসগোল্লা।',
@@ -154,6 +158,7 @@ export const initialProducts: ProductItem[] = [
     },
     badgeBn: 'ঘোষ স্পেশাল • ৬ পিস',
     badgeEn: 'Ghosh Signature • 6 pcs',
+    stockCount: 7, // Low stock (below default threshold 10)
     isBestSeller: true,
     isFeatured: true,
     descriptionBn: 'মালদার বিখ্যাত বিশেষ ক্ষীর ও পেস্তা দিয়ে তৈরি অভিনব রসোগোদাম।',
@@ -185,6 +190,7 @@ export const initialProducts: ProductItem[] = [
     pricePerKg: 200,
     badgeBn: 'বিশুদ্ধ ঘি • ৬ পিস',
     badgeEn: 'Pure Desi Ghee • 6 pcs',
+    stockCount: 22, // Healthy stock
     isBestSeller: true,
     isFeatured: true,
     descriptionBn: 'খাঁটি দেশি ঘিয়ে ভাজা জাফরান মিশ্রিত মতিচুর ও বেসনের লাড্ডু।',
@@ -214,6 +220,7 @@ export const initialProducts: ProductItem[] = [
     },
     badgeBn: 'বাঙালি ক্লাসিক • ৬ পিস',
     badgeEn: 'Bengali Classic • 6 pcs',
+    stockCount: 18, // Healthy stock
     isBestSeller: true,
     isFeatured: true,
     descriptionBn: 'তাজা ছানা ও মালাইয়ে মোড়ানো ঐতিহ্যবাহী বাঙালি পোড়া চমচম।',
@@ -243,6 +250,7 @@ export const initialProducts: ProductItem[] = [
     },
     badgeBn: 'বিশেষ স্বাদ • ৬ পিস',
     badgeEn: 'Special Taste • 6 pcs',
+    stockCount: 3, // Low stock (below default threshold 10)
     isBestSeller: false,
     descriptionBn: 'মিশ্রি ও খাঁটি খোয়া ক্ষীরের মেলবন্ধনে তৈরি দারুণ সুস্বাদু ডমমিশ্রী।',
     descriptionEn: 'Rich crystallized milk delicacy crafted with premium rock sugar crystals and roasted mawa.',
@@ -446,6 +454,7 @@ export const initialProducts: ProductItem[] = [
     },
     badgeBn: 'জাফরানি ক্ষীর • ১ পিস',
     badgeEn: 'Kesari Rabdi • 1 pc',
+    stockCount: 4, // Low stock (below default threshold 10)
     isBestSeller: true,
     isFeatured: true,
     descriptionBn: 'ঘন জাফরানি দুধ ও ক্ষীরে ডোবানো নরম তুলতুলে ছানার রসমলাই। মুখে দিলেই মালাইয়ের স্বাদ ছড়িয়ে পড়ে।',
@@ -477,6 +486,7 @@ export const initialProducts: ProductItem[] = [
     },
     badgeBn: 'মাটির হাঁড়ি • ১০ পিস',
     badgeEn: 'Clay Pot • 10 pcs',
+    stockCount: 6, // Low stock (below default threshold 10)
     isBestSeller: true,
     isFeatured: true,
     descriptionBn: 'মাটির পাতিলে পাতানো খাঁটি ঘন দুধের ক্ষীরসা মিষ্টি দই, সোনালী সরের স্তরযুক্ত।',

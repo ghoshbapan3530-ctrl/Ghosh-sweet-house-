@@ -14,6 +14,10 @@
           "type": "string",
           "description": "Identifier of the customer who placed the order"
         },
+        "customerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of customer or anonymous guest UID"
+        },
         "customerName": {
           "type": "string",
           "description": "Customer full name",
@@ -24,6 +28,10 @@
           "description": "10-digit mobile phone number",
           "pattern": "^[0-9]{10}$"
         },
+        "isPhoneVerified": {
+          "type": "boolean",
+          "description": "Whether phone was verified via OTP"
+        },
         "email": {
           "type": "string",
           "description": "Customer email if provided",
@@ -31,7 +39,7 @@
         },
         "items": {
           "type": "array",
-          "description": "List of ordered items with portion and quantity"
+          "description": "List of ordered items with portion, quantity and price snapshot"
         },
         "subtotal": {
           "type": "number",
@@ -44,6 +52,10 @@
         "totalAmount": {
           "type": "number",
           "description": "Final payable amount in INR"
+        },
+        "finalTotal": {
+          "type": "number",
+          "description": "Alias for final payable amount in INR"
         },
         "paymentMethod": {
           "type": "string",
@@ -67,6 +79,14 @@
             "CANCELLED"
           ],
           "description": "Order progression status"
+        },
+        "orderStatus": {
+          "type": "string",
+          "description": "Human-friendly or duplicate status string"
+        },
+        "serverTimestamp": {
+          "type": "string",
+          "description": "Server timestamp indicator or Firestore server timestamp"
         },
         "deliveryAddress": {
           "type": "string",
@@ -131,41 +151,44 @@
     },
     "Customer": {
       "title": "Customer",
-      "description": "Registered customer loyalty and contact profile",
+      "description": "Customer profile keyed by Firebase Auth UID in customers collection",
       "type": "object",
       "properties": {
-        "customerId": {
-          "type": "string",
-          "description": "Unique customer ID or Firebase Auth UID"
-        },
         "name": {
           "type": "string",
-          "description": "Customer name"
+          "description": "Customer full name"
         },
-        "phone": {
+        "phoneNumber": {
           "type": "string",
-          "description": "Customer phone number"
+          "description": "Verified 10-digit mobile number"
         },
         "email": {
           "type": "string",
-          "format": "email"
+          "format": "email",
+          "description": "Optional customer email"
         },
-        "addresses": {
-          "type": "array",
-          "description": "Saved delivery addresses"
+        "address": {
+          "type": "string",
+          "description": "Primary delivery address"
         },
-        "fcmTokens": {
-          "type": "array",
-          "description": "Registered FCM tokens for push alerts"
+        "pinCode": {
+          "type": "string",
+          "description": "6-digit postal PIN code"
+        },
+        "sweetPoints": {
+          "type": "number",
+          "description": "Customer loyalty reward points balance"
         },
         "createdAt": {
-          "type": "string"
+          "type": "string",
+          "description": "ISO timestamp of account creation"
         },
         "updatedAt": {
-          "type": "string"
+          "type": "string",
+          "description": "ISO timestamp of last profile update"
         }
       },
-      "required": ["phone", "createdAt"]
+      "required": ["name", "phoneNumber", "createdAt"]
     },
     "OwnerSettings": {
       "title": "OwnerSettings",
@@ -200,6 +223,31 @@
           "type": "string"
         }
       }
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Products catalog item for Ghosh Sweet House",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "nameBn": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "portionEn": { "type": "string" },
+        "portionBn": { "type": "string" },
+        "descriptionEn": { "type": "string" },
+        "descriptionBn": { "type": "string" },
+        "image": { "type": "string" },
+        "isAvailable": { "type": "boolean" },
+        "isEnabled": { "type": "boolean" },
+        "badgeEn": { "type": "string" },
+        "badgeBn": { "type": "string" },
+        "isBestSeller": { "type": "boolean" },
+        "isFeatured": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "nameEn", "nameBn", "category", "price"]
     }
   },
   "firestore": {
@@ -214,6 +262,10 @@
     "/owner_settings/{settingsId}": {
       "schema": "OwnerSettings",
       "description": "Global shop operational configuration"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Products catalog collection"
     }
   }
 }

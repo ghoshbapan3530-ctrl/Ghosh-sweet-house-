@@ -33,6 +33,10 @@ export interface ProductItem {
   descriptionBn: string;
   descriptionEn: string;
   nutrition?: NutritionalInfo;
+  isAvailable?: boolean; // false = Out of Stock (shows Out of Stock badge, Add to Cart disabled)
+  isEnabled?: boolean; // false = Disabled (hidden from customer menu, retained in admin)
+  stockCount?: number; // current inventory count (units/kg)
+  lowStockThreshold?: number; // custom low stock alert threshold for this item
 }
 
 export interface CartItem {
@@ -122,11 +126,13 @@ export interface DiscountRpcResponse {
 }
 
 export interface CustomerAccount {
-  id: string; // public.customers.id (UUID)
-  auth_user_id: string; // Permanent identity linked to Supabase auth.users.id
+  id: string; // Firebase UID
+  auth_user_id: string; // Firebase UID
   name: string;
   mobile: string; // verified phone
   email?: string;
+  address?: string;
+  pinCode?: string;
   pin?: string;
   sweetPoints: number; // Current balance
   totalPointsEarned: number;
@@ -135,7 +141,16 @@ export interface CustomerAccount {
   createdAt: number;
 }
 
-export type SheetsSyncStatus = 'synced' | 'pending' | 'failed';
+export type OrderSyncStatus = 'synced' | 'pending' | 'failed';
+export type SheetsSyncStatus = OrderSyncStatus;
+
+export interface OrderFeedback {
+  rating: number; // 1 to 5 stars
+  tags: string[]; // Selected compliment chips
+  comment?: string;
+  createdAt: string; // ISO string
+  customerName?: string;
+}
 
 export interface OrderHistoryItem {
   id: string;
@@ -163,5 +178,6 @@ export interface OrderHistoryItem {
   syncStatus?: SheetsSyncStatus;
   syncError?: string;
   lastSyncedAt?: number;
+  feedback?: OrderFeedback;
 }
 

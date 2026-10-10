@@ -14,8 +14,8 @@ import { ContactSection } from './components/ContactSection';
 import { NewsletterSection } from './components/NewsletterSection';
 import { Footer } from './components/Footer';
 import { FloatingMobileBar } from './components/FloatingMobileBar';
+import { FloatingWhatsAppButton } from './components/FloatingWhatsAppButton';
 import { CartModal } from './components/CartModal';
-import { AdminPriceModal } from './components/AdminPriceModal';
 import { OrderHistoryModal } from './components/OrderHistoryModal';
 import { AuthModal } from './components/AuthModal';
 import { CustomerDashboardModal } from './components/CustomerDashboardModal';
@@ -26,6 +26,9 @@ import { OwnerLogin } from './components/OwnerLogin';
 import { OwnerDashboard } from './components/OwnerDashboard';
 import { subscribeToOwnerAuth, isOwnerAuthorized, OwnerAuthState } from './lib/auth';
 import { User } from 'firebase/auth';
+import { SweetBox3DSection } from './components/3d/SweetBox3DSection';
+import { Sweet3DModal } from './components/3d/Sweet3DModal';
+import { Ambient3DCanvas } from './components/3d/Ambient3DCanvas';
 
 const ShopAppContent: React.FC = () => {
   const {
@@ -34,7 +37,12 @@ const ShopAppContent: React.FC = () => {
     setTrackingOrderId,
     isOwnerPortalOpen,
     setIsOwnerPortalOpen,
-    language
+    language,
+    is3DModalOpen,
+    close3DViewer,
+    active3DSweetType,
+    active3DProduct,
+    is3DAmbientEnabled
   } = useShop();
   const isDark = theme === 'dark';
 
@@ -172,6 +180,9 @@ const ShopAppContent: React.FC = () => {
         <div className="absolute top-[70%] left-0 w-[500px] h-[500px] bg-amber-500/4 rounded-full blur-3xl" />
       </div>
 
+      {/* Ambient 3D Interactive Floating Particles & Parallax Canvas */}
+      {is3DAmbientEnabled && <Ambient3DCanvas isDark={isDark} />}
+
       {/* PWA App Install Banner for Android / Mobile */}
       <PWAInstallButton variant="banner" />
 
@@ -182,6 +193,7 @@ const ShopAppContent: React.FC = () => {
       <main>
         <Hero />
         <BestSellers />
+        <SweetBox3DSection />
         <FestivalCountdownSection />
         <SweetsMenu />
         <SnacksMenu />
@@ -198,15 +210,25 @@ const ShopAppContent: React.FC = () => {
       {/* Footer */}
       <Footer />
 
+      {/* Floating WhatsApp Action Button with Cart Pre-fill */}
+      <FloatingWhatsAppButton />
+
       {/* Mobile Sticky Floating Actions */}
       <FloatingMobileBar />
 
       {/* Interactive Modals */}
       <CartModal />
-      <AdminPriceModal />
       <OrderHistoryModal />
       <AuthModal />
       <CustomerDashboardModal />
+
+      {/* 360° Interactive Sweet 3D Inspection Studio Modal */}
+      <Sweet3DModal
+        isOpen={is3DModalOpen}
+        onClose={close3DViewer}
+        initialSweetType={active3DSweetType}
+        relatedProduct={active3DProduct}
+      />
 
       {/* Offline Status Toast Indicator */}
       <OfflineIndicator />

@@ -15,15 +15,18 @@ import {
   Calendar,
   AlertCircle,
   Truck,
-  FileSpreadsheet,
   RefreshCw,
   Printer,
   FileText,
-  Gift
+  Gift,
+  Star,
+  Download
 } from 'lucide-react';
 import { OrderStatus, OrderHistoryItem } from '../types';
 import { SyncStatusBadge } from './SyncStatusBadge';
 import { InvoiceModal } from './InvoiceModal';
+import { PostOrderFeedbackModal } from './PostOrderFeedbackModal';
+import { downloadOrderInvoicePdf } from '../lib/pdf-invoice';
 
 export const OrderHistoryModal: React.FC = () => {
   const {
@@ -41,6 +44,7 @@ export const OrderHistoryModal: React.FC = () => {
 
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<OrderHistoryItem | null>(null);
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
+  const [selectedFeedbackOrder, setSelectedFeedbackOrder] = useState<OrderHistoryItem | null>(null);
 
   if (!isOrdersOpen) return null;
 
@@ -235,7 +239,11 @@ export const OrderHistoryModal: React.FC = () => {
                   const isPreparing = order.status === 'Preparing';
                   const isOutForDelivery = order.status === 'Out for Delivery';
                   const isReady = order.status === 'Ready for Pickup';
-                  const isDelivered = order.status === 'Delivered' || order.status === 'Completed';
+                  const isDelivered =
+                    order.status === 'Delivered' ||
+                    order.status === 'Completed' ||
+                    (order.status as any).toLowerCase?.() === 'delivered' ||
+                    (order.status as any).toLowerCase?.() === 'collected';
 
                   return (
                     <div
@@ -246,7 +254,7 @@ export const OrderHistoryModal: React.FC = () => {
                           : 'bg-white border-amber-800/15 shadow-sm'
                       }`}
                     >
-                      {/* Top Bar: Order ID, Date, Sheets Sync Status & Kitchen Status Pill */}
+                      {/* Top Bar: Order ID, Date, Cloud Sync Status & Kitchen Status Pill */}
                       <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-amber-500/15">
                         <div className="flex items-center flex-wrap gap-2">
                           <span className="font-mono font-bold text-xs sm:text-sm text-amber-400">
@@ -257,9 +265,9 @@ export const OrderHistoryModal: React.FC = () => {
                             {order.date}
                           </span>
 
-                          {/* Google Sheets Real-time Sync Status Indicator */}
+                          {/* Real-time Cloud Sync Status Indicator */}
                           <div className="flex items-center gap-1 pl-1 border-l border-amber-500/20">
-                            <span className="text-[10px] text-stone-400 font-mono hidden md:inline">Sheets:</span>
+                            <span className="text-[10px] text-stone-400 font-mono hidden md:inline">Cloud:</span>
                             <SyncStatusBadge
                               status={order.syncStatus || 'pending'}
                               orderId={order.id}
@@ -406,8 +414,25 @@ export const OrderHistoryModal: React.FC = () => {
                           )}
                         </div>
 
-                        {/* ROW ACTIONS: PRINT INVOICE, RETRY SYNC & REORDER BUTTON */}
+                        {/* ROW ACTIONS: DOWNLOAD PDF, PRINT INVOICE, RETRY SYNC & REORDER BUTTON */}
                         <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => downloadOrderInvoicePdf(order)}
+                            id={`download-pdf-btn-${order.id}`}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs border transition-all active:scale-95 shadow-sm ${
+                              isDark
+                                ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-500/40 hover:border-amber-400'
+                                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                            }`}
+                            title={language === 'bn' ? 'সরাসরি PDF ইনভয়েস ডাউনলোড করুন' : 'Download Printable PDF Invoice'}
+                          >
+                            <Download className="w-3.5 h-3.5 text-amber-400" />
+                            <span className="font-bengali">
+                              {language === 'bn' ? 'PDF চালান' : 'PDF Invoice'}
+                            </span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => {
@@ -424,7 +449,7 @@ export const OrderHistoryModal: React.FC = () => {
                           >
                             <Printer className="w-3.5 h-3.5 text-amber-400" />
                             <span className="font-bengali">
-                              {language === 'bn' ? 'রসিদ প্রিন্ট' : 'Print Invoice'}
+                              {language === 'bn' ? 'রসিদ' : 'Print'}
                             </span>
                           </button>
 
@@ -434,7 +459,7 @@ export const OrderHistoryModal: React.FC = () => {
                               onClick={() => retrySyncOrder(order.id)}
                               id={`retry-sync-btn-${order.id}`}
                               className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 active:scale-95 transition-all shadow-md shadow-rose-500/10"
-                              title={language === 'bn' ? 'গুগল শিটসে পুনরায় সিঙ্ক করুন' : 'Retry Google Sheets Sync'}
+                              title={language === 'bn' ? 'ক্লাউডে পুনরায় সিঙ্ক করুন' : 'Retry Cloud Sync'}
                             >
                               <RefreshCw className="w-3.5 h-3.5" />
                               <span className="font-bengali">
@@ -454,6 +479,66 @@ export const OrderHistoryModal: React.FC = () => {
                           </button>
                         </div>
                       </div>
+
+                      {/* Post-Order Customer Rating & Feedback Mechanism */}
+                      {isDelivered && (
+                        <div className="pt-3 border-t border-amber-500/10">
+                          {order.feedback ? (
+                            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center text-amber-400">
+                                  {[1, 2, 3, 4, 5].map((s) => (
+                                    <Star
+                                      key={s}
+                                      className={`w-3.5 h-3.5 ${
+                                        s <= order.feedback!.rating
+                                          ? 'fill-amber-400 text-amber-400'
+                                          : 'text-stone-600'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                                <span className="text-xs font-bold font-mono text-amber-400">
+                                  {order.feedback.rating}/5
+                                </span>
+                                {order.feedback.tags && order.feedback.tags.length > 0 && (
+                                  <span className="text-[11px] text-stone-300 font-semibold truncate max-w-[220px]">
+                                    • {order.feedback.tags.join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFeedbackOrder(order)}
+                                id={`edit-order-feedback-btn-${order.id}`}
+                                className="text-xs text-amber-400 hover:text-amber-300 font-bold underline transition-colors"
+                              >
+                                {language === 'bn' ? 'মতামত পরিবর্তন' : 'Edit Review'}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-amber-600/10 to-transparent border border-amber-500/30 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Star className="w-4 h-4 fill-amber-400 text-amber-400 flex-shrink-0" />
+                                <span className="text-xs font-bold text-amber-300 font-bengali">
+                                  {language === 'bn'
+                                    ? 'মিষ্টি কেমন লাগলো? আপনার অভিজ্ঞতা রেটিং দিন'
+                                    : 'How were the sweets? Rate your experience'}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFeedbackOrder(order)}
+                                id={`rate-order-btn-${order.id}`}
+                                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-amber-500/20"
+                              >
+                                <Star className="w-3.5 h-3.5 fill-stone-950" />
+                                <span>{language === 'bn' ? '⭐ রেটিং দিন' : '⭐ Rate Order'}</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -471,6 +556,15 @@ export const OrderHistoryModal: React.FC = () => {
         language={language}
         theme={theme}
       />
+
+      {/* Post-Order Feedback Rating Modal */}
+      {selectedFeedbackOrder && (
+        <PostOrderFeedbackModal
+          order={selectedFeedbackOrder}
+          isOpen={Boolean(selectedFeedbackOrder)}
+          onClose={() => setSelectedFeedbackOrder(null)}
+        />
+      )}
     </div>
   );
 };

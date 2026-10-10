@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useShop } from '../context/ShopContext';
 import {
   FirebaseOrder,
@@ -52,9 +52,32 @@ import {
   Printer,
   LayoutGrid,
   List,
-  ArrowUpDown
+  ArrowUpDown,
+  Send,
+  ExternalLink,
+  Edit3,
+  EyeOff,
+  Minus,
+  Star
 } from 'lucide-react';
+import { ProductItem } from '../types';
+import { EditProductModal } from './EditProductModal';
+import { OwnerSalesCharts } from './OwnerSalesCharts';
+import {
+  updateProductPriceInFirestore,
+  toggleProductAvailabilityInFirestore,
+  toggleProductEnabledInFirestore,
+  updateProductStockInFirestore
+} from '../lib/firestore-products';
 import { OrderTimestamp } from './OrderTimestamp';
+import { InvoiceModal } from './InvoiceModal';
+import {
+  getDirectTelegramOrderLink,
+  sendTelegramOrderNotification,
+  sendTelegramTestAlert,
+  getTelegramStatus,
+  TelegramServerStatus
+} from '../services/telegramService';
 import {
   parseOrderDate,
   formatOrderDateTime,
@@ -85,6 +108,7 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
 
   // Selected Order for detail modal
   const [selectedOrder, setSelectedOrder] = useState<FirebaseOrder | null>(null);
+  const [invoiceModalOrder, setInvoiceModalOrder] = useState<FirebaseOrder | null>(null);
 
   // Sound & Notifications
   const [isSoundMuted, setIsSoundMuted] = useState(false);
@@ -112,6 +136,186 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'amount_high' | 'amount_low'>('newest');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
+  // Telegram Notifications State
+  const [telegramStatus, setTelegramStatus] = useState<TelegramServerStatus | null>(null);
+  const [isTestingTelegram, setIsTestingTelegram] = useState(false);
+  const [telegramTestFeedback, setTelegramTestFeedback] = useState<string | null>(null);
+
+  // Product Management State (Real-time Firestore Editing)
+  const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
+  const [isEditProductModalOpen, setIsEditProductModalOpen] = useState(false);
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [selectedProductCategory, setSelectedProductCategory] = useState<
+    'all' | 'sweet' | 'snack' | 'dairy' | 'special'
+  >('all');
+  const [productFeedbackToast, setProductFeedbackToast] = useState<string | null>(null);
+  const [updatingProductId, setUpdatingProductId] = useState<string | null>(null);
+
+  // Low Stock Alert System State
+  const currentLowStockThreshold = settings.lowStockThreshold || 10;
+  const [stockFilter, setStockFilter] = useState<'all' | 'low_stock' | 'out_of_stock' | 'healthy'>('all');
+  const [dismissedLowStockAlert, setDismissedLowStockAlert] = useState(false);
+  const [quickThresholdInput, setQuickThresholdInput] = useState<number>(currentLowStockThreshold);
+  const [isUpdatingThreshold, setIsUpdatingThreshold] = useState(false);
+
+  useEffect(() => {
+    if (settings.lowStockThreshold) {
+      setQuickThresholdInput(settings.lowStockThreshold);
+    }
+  }, [settings.lowStockThreshold]);
+
+  // Compute Low Stock & Out of Stock Products
+  const lowStockProducts = useMemo(() => {
+    return products.filter((p) => {
+      const threshold = typeof p.lowStockThreshold === 'number' ? p.lowStockThreshold : currentLowStockThreshold;
+      const stock = typeof p.stockCount === 'number' ? p.stockCount : 25;
+      return stock <= threshold;
+    });
+  }, [products, currentLowStockThreshold]);
+
+  const outOfStockProducts = useMemo(() => {
+    return products.filter((p) => {
+      const stock = typeof p.stockCount === 'number' ? p.stockCount : 25;
+      return stock === 0 || p.isAvailable === false;
+    });
+  }, [products]);
+
+  const healthyStockProducts = useMemo(() => {
+    return products.filter((p) => {
+      const threshold = typeof p.lowStockThreshold === 'number' ? p.lowStockThreshold : currentLowStockThreshold;
+      const stock = typeof p.stockCount === 'number' ? p.stockCount : 25;
+      return stock > threshold && p.isAvailable !== false;
+    });
+  }, [products, currentLowStockThreshold]);
+
+  const handleUpdateGlobalThreshold = async (newVal: number) => {
+    const val = Math.max(1, Math.round(newVal));
+    setQuickThresholdInput(val);
+    setIsUpdatingThreshold(true);
+    try {
+      await saveOwnerSettings({ lowStockThreshold: val });
+      showProductFeedback(`Low stock alert threshold set to ${val} units`);
+    } catch (err: any) {
+      showProductFeedback(`Error: ${err.message || 'Failed to update threshold'}`);
+    } finally {
+      setIsUpdatingThreshold(false);
+    }
+  };
+
+  const handleQuickStockChange = async (p: ProductItem, delta: number) => {
+    const curStock = typeof p.stockCount === 'number' ? p.stockCount : 25;
+    const newStock = Math.max(0, curStock + delta);
+    setUpdatingProductId(p.id);
+    const res = await updateProductStockInFirestore(p.id, newStock);
+    setUpdatingProductId(null);
+    if (res.success) {
+      showProductFeedback(`Stock for ${p.nameEn}: ${newStock} units`);
+    } else {
+      showProductFeedback(`Error: ${res.error || 'Failed to update stock'}`);
+    }
+  };
+
+  const handleQuickRestock = async (p: ProductItem, addUnits: number) => {
+    const curStock = typeof p.stockCount === 'number' ? p.stockCount : 25;
+    const newStock = curStock + addUnits;
+    setUpdatingProductId(p.id);
+    const res = await updateProductStockInFirestore(p.id, newStock);
+    setUpdatingProductId(null);
+    if (res.success) {
+      showProductFeedback(`Restocked +${addUnits} units for ${p.nameEn} (Total: ${newStock})`);
+    } else {
+      showProductFeedback(`Error: ${res.error || 'Failed to restock'}`);
+    }
+  };
+
+  const showProductFeedback = (msg: string) => {
+    setProductFeedbackToast(msg);
+    setTimeout(() => setProductFeedbackToast(null), 3200);
+  };
+
+  const handleQuickPriceChange = async (p: ProductItem, delta: number) => {
+    const newPrice = Math.max(0, p.price + delta);
+    setUpdatingProductId(p.id);
+    const res = await updateProductPriceInFirestore(p.id, newPrice);
+    setUpdatingProductId(null);
+    if (res.success) {
+      showProductFeedback(`₹${newPrice} updated for ${p.nameEn}`);
+    } else {
+      showProductFeedback(`Error: ${res.error || 'Failed to update price'}`);
+    }
+  };
+
+  const handleToggleProductAvailability = async (p: ProductItem) => {
+    const nextVal = p.isAvailable === false;
+    setUpdatingProductId(p.id);
+    const res = await toggleProductAvailabilityInFirestore(p.id, nextVal);
+    setUpdatingProductId(null);
+    if (res.success) {
+      showProductFeedback(
+        `${p.nameEn} marked ${nextVal ? 'AVAILABLE 🟢' : 'OUT OF STOCK 🔴'}`
+      );
+    }
+  };
+
+  const handleToggleProductEnabled = async (p: ProductItem) => {
+    const nextVal = p.isEnabled === false;
+    setUpdatingProductId(p.id);
+    const res = await toggleProductEnabledInFirestore(p.id, nextVal);
+    setUpdatingProductId(null);
+    if (res.success) {
+      showProductFeedback(
+        `${p.nameEn} is now ${nextVal ? 'ENABLED in menu 👁️' : 'HIDDEN from menu 🚫'}`
+      );
+    }
+  };
+
+  const handleAddNewProduct = () => {
+    const newId = `product-${Date.now()}`;
+    const newProd: ProductItem = {
+      id: newId,
+      nameEn: '',
+      nameBn: '',
+      category: 'sweet',
+      price: 10,
+      portionEn: 'per piece',
+      portionBn: 'প্রতি পিস',
+      descriptionEn: '',
+      descriptionBn: '',
+      image: 'https://images.unsplash.com/photo-1541781774459-bb2af2f05b55?auto=format&fit=crop&w=600&q=80',
+      isAvailable: true,
+      isEnabled: true
+    };
+    setEditingProduct(newProd);
+    setIsEditProductModalOpen(true);
+  };
+
+  // Load telegram status on mount
+  useEffect(() => {
+    getTelegramStatus().then((s) => s && setTelegramStatus(s));
+  }, []);
+
+  const handleTestTelegramAlert = async () => {
+    setIsTestingTelegram(true);
+    setTelegramTestFeedback(null);
+    try {
+      const res = await sendTelegramTestAlert(editableSettings.telegramBotToken, editableSettings.telegramChatId);
+      if (res.success) {
+        setTelegramTestFeedback('✅ Test order alert prepared for https://t.me/r5yyy5z! Opening Telegram...');
+        if (res.directUrl) {
+          window.open(res.directUrl, '_blank');
+        }
+        const stat = await getTelegramStatus();
+        if (stat) setTelegramStatus(stat);
+      } else {
+        setTelegramTestFeedback(`⚠️ ${res.error || 'Failed to send test alert'}`);
+      }
+    } catch (e: any) {
+      setTelegramTestFeedback(`⚠️ Error: ${e.message || 'Could not reach server'}`);
+    } finally {
+      setIsTestingTelegram(false);
+    }
+  };
+
   // Subscribe to Orders & Settings
   useEffect(() => {
     setLoading(true);
@@ -136,6 +340,12 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
             if (!isSoundMuted) {
               playOrderAlertSound();
             }
+            // Auto dispatch Telegram notification to https://t.me/r5yyy5z
+            sendTelegramOrderNotification(
+              newlyAdded,
+              editableSettings.telegramBotToken,
+              editableSettings.telegramChatId
+            ).catch(console.warn);
           }
         }
 
@@ -436,6 +646,44 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
         </div>
       )}
 
+      {/* Low Stock Warning Alert Banner */}
+      {lowStockProducts.length > 0 && !dismissedLowStockAlert && (
+        <div className="bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 text-stone-950 px-4 py-2.5 shadow-lg flex flex-wrap items-center justify-between gap-3 sticky top-0 z-40 border-b border-amber-600 animate-fade-in">
+          <div className="flex items-center gap-2.5 text-xs sm:text-sm font-bold">
+            <span className="p-1 rounded-md bg-stone-950/20 text-stone-950 flex items-center justify-center">
+              <AlertTriangle className="w-4 h-4 animate-pulse" />
+            </span>
+            <span>
+              <strong>Low Stock Alert:</strong> {lowStockProducts.length} {lowStockProducts.length === 1 ? 'sweet item is' : 'sweet items are'} at or below threshold ({currentLowStockThreshold} units).
+              <span className="hidden md:inline font-normal ml-1.5 opacity-90">
+                ({lowStockProducts.slice(0, 3).map((p: ProductItem) => `${p.nameEn}: ${typeof p.stockCount === 'number' ? p.stockCount : 25} left`).join(', ')}{lowStockProducts.length > 3 ? ` +${lowStockProducts.length - 3} more` : ''})
+              </span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('products');
+                setStockFilter('low_stock');
+              }}
+              className="px-3 py-1 bg-stone-950 text-amber-300 rounded-lg text-xs font-bold hover:bg-stone-900 transition-all active:scale-95 shadow-sm"
+            >
+              Restock Items ({lowStockProducts.length}) →
+            </button>
+            <button
+              type="button"
+              onClick={() => setDismissedLowStockAlert(true)}
+              className="p-1 text-stone-950 hover:bg-stone-950/10 rounded transition-colors"
+              title="Dismiss warning"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Header */}
       <header
         className={`sticky top-0 z-40 border-b backdrop-blur-md transition-colors ${
@@ -500,6 +748,19 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
                 <span>Storefront</span>
               </button>
             )}
+
+            {/* Telegram Notification Status Link */}
+            <a
+              href="https://t.me/r5yyy5z"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-sky-500/40 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 text-xs font-semibold transition-all shadow-sm"
+              title="Every order notifies https://t.me/r5yyy5z"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Telegram: @r5yyy5z</span>
+              <span className="md:hidden">@r5yyy5z</span>
+            </a>
 
             {/* Logout */}
             <button
@@ -598,6 +859,15 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
           >
             <Package className="w-3.5 h-3.5" />
             <span>Products ({products.length})</span>
+            {lowStockProducts.length > 0 && (
+              <span
+                className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-600 text-white animate-pulse flex items-center gap-0.5"
+                title={`${lowStockProducts.length} items are low in stock`}
+              >
+                <AlertTriangle className="w-2.5 h-2.5" />
+                <span>{lowStockProducts.length}</span>
+              </span>
+            )}
           </button>
 
           <button
@@ -939,6 +1209,16 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
                                 <span>Details</span>
                               </button>
 
+                              <button
+                                type="button"
+                                onClick={() => setInvoiceModalOrder(order)}
+                                className="py-1 px-2 rounded-lg border border-amber-500/30 text-amber-500 hover:bg-amber-500/10 text-xs font-semibold flex items-center gap-1 cursor-pointer shadow-sm"
+                                title="View & Print Tax Invoice"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span className="hidden xl:inline">Invoice</span>
+                              </button>
+
                               {order.status === 'PENDING' && (
                                 <button
                                   disabled={updatingStatusId === order.orderId}
@@ -1094,6 +1374,26 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
                           </span>
                         )}
                       </div>
+
+                      {/* Customer Post-Order Feedback Rating Pill */}
+                      {order.feedback && (
+                        <div className="mb-2 p-2 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 text-amber-400 font-bold font-mono">
+                            <span className="flex items-center">
+                              <Star className="w-3 h-3 fill-amber-400 mr-0.5" />
+                              {order.feedback.rating}/5
+                            </span>
+                            {order.feedback.tags && order.feedback.tags.length > 0 && (
+                              <span className="text-stone-300 font-normal font-sans truncate max-w-[130px]">
+                                • {order.feedback.tags[0]}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-amber-500/80 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                            Review
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Action buttons */}
@@ -1104,6 +1404,16 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
                       >
                         <Eye className="w-3.5 h-3.5" />
                         <span>Details</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceModalOrder(order)}
+                        className="py-1.5 px-2.5 rounded-xl border border-amber-500/30 text-amber-500 hover:bg-amber-500/10 text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer shadow-sm"
+                        title="View & Print Tax Invoice"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Invoice</span>
                       </button>
 
                       {/* Fast status actions depending on current stage */}
@@ -1232,47 +1542,473 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
           </div>
         )}
 
-        {/* Tab 6: Products */}
+        {/* Tab 6: Products Management */}
         {activeTab === 'products' && (
-          <div
-            className={`rounded-2xl border p-4 sm:p-6 shadow-sm ${
-              isDark ? 'bg-[#180E08] border-stone-800' : 'bg-white border-stone-200'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold font-serif flex items-center gap-2">
-                <Package className="w-5 h-5 text-amber-500" />
-                <span>Product Catalog ({products.length})</span>
-              </h2>
-              <span className="text-xs text-stone-500 font-mono">
-                Active menu items available for order
-              </span>
-            </div>
+          <div className="space-y-4">
+            {/* Header & Controls Card */}
+            <div
+              className={`rounded-2xl border p-4 sm:p-6 shadow-sm ${
+                isDark ? 'bg-[#180E08] border-stone-800' : 'bg-white border-stone-200'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold font-serif flex items-center gap-2">
+                    <Package className="w-5 h-5 text-amber-500" />
+                    <span>Product Management & Inventory • পণ্য ও মজুত পরিচালনা</span>
+                  </h2>
+                  <p className="text-xs text-stone-400 mt-0.5">
+                    Real-time Cloud Firestore catalog & inventory alert system. Changes sync live across customer screens.
+                  </p>
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {products.map((p) => (
-                <div
-                  key={p.id}
-                  className={`p-3 rounded-xl border text-xs ${
-                    isDark ? 'bg-stone-900/60 border-stone-800' : 'bg-stone-50 border-stone-200'
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Global Low Stock Threshold Control Pill */}
+                  <div className="flex items-center gap-2 bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl px-3 py-1.5 text-xs shadow-sm">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="text-stone-500 dark:text-stone-400 font-semibold">Alert Threshold:</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={isUpdatingThreshold || quickThresholdInput <= 1}
+                        onClick={() => handleUpdateGlobalThreshold(quickThresholdInput - 1)}
+                        className="w-6 h-6 rounded-md bg-stone-200 dark:bg-stone-800 hover:bg-amber-500 hover:text-stone-950 font-bold flex items-center justify-center transition-colors disabled:opacity-40"
+                        title="Decrease alert threshold"
+                      >
+                        <Minus className="w-2.5 h-2.5" />
+                      </button>
+                      <span className="font-mono font-bold text-amber-500 px-1 text-sm">
+                        {quickThresholdInput}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={isUpdatingThreshold}
+                        onClick={() => handleUpdateGlobalThreshold(quickThresholdInput + 1)}
+                        className="w-6 h-6 rounded-md bg-stone-200 dark:bg-stone-800 hover:bg-amber-500 hover:text-stone-950 font-bold flex items-center justify-center transition-colors disabled:opacity-40"
+                        title="Increase alert threshold"
+                      >
+                        <Plus className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-stone-400">units</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddNewProduct}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-bold text-xs shadow-md flex items-center gap-1.5 transition-all active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add New Product</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Feedback Toast */}
+              {productFeedbackToast && (
+                <div className="mb-4 p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-xs flex items-center gap-2 animate-fade-in font-medium">
+                  <Check className="w-4 h-4 flex-shrink-0" />
+                  <span>{productFeedbackToast}</span>
+                </div>
+              )}
+
+              {/* Status & Inventory Alert Counters */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mb-4 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('all')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    stockFilter === 'all'
+                      ? 'bg-stone-800 text-stone-100 border-amber-500/50 shadow-sm'
+                      : 'bg-stone-100 dark:bg-stone-900/60 border-stone-200 dark:border-stone-800/80 hover:border-amber-500/30'
                   }`}
                 >
-                  <div className="flex justify-between items-start gap-2">
-                    <div>
-                      <span className="font-bold block text-stone-900 dark:text-stone-100">
-                        {p.nameEn}
-                      </span>
-                      <span className="text-[11px] text-amber-500 font-bengali">{p.nameBn}</span>
-                    </div>
-                    <span className="font-mono font-bold text-amber-500">₹{p.price}</span>
+                  <span className="text-stone-500 dark:text-stone-400 text-[10px] uppercase font-bold block mb-0.5">
+                    Total Catalog
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-base">{products.length}</span>
+                    <span className="text-[10px] text-stone-400">Items</span>
                   </div>
-                  <div className="mt-2 text-[10px] text-stone-500 flex justify-between">
-                    <span className="capitalize">{p.category}</span>
-                    <span>{p.portionEn}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('low_stock')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    stockFilter === 'low_stock'
+                      ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-2 ring-amber-500/30 shadow-md'
+                      : 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/15'
+                  }`}
+                >
+                  <span className="text-[10px] uppercase font-extrabold flex items-center gap-1 block mb-0.5">
+                    <AlertTriangle className="w-3 h-3 animate-pulse" />
+                    <span>Low Stock Alert</span>
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-base text-amber-300">
+                      {lowStockProducts.length}
+                    </span>
+                    <span className="text-[10px] font-semibold text-amber-400/80">
+                      &le; {currentLowStockThreshold} units
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('out_of_stock')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    stockFilter === 'out_of_stock'
+                      ? 'bg-red-500/25 border-red-500 text-red-300 ring-2 ring-red-500/30 shadow-md'
+                      : 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/15'
+                  }`}
+                >
+                  <span className="text-[10px] uppercase font-bold text-red-400 block mb-0.5">
+                    Out of Stock
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-base">{outOfStockProducts.length}</span>
+                    <span className="text-[10px] text-red-400/80">0 left</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStockFilter('healthy')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    stockFilter === 'healthy'
+                      ? 'bg-emerald-500/25 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/30 shadow-md'
+                      : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/15'
+                  }`}
+                >
+                  <span className="text-[10px] uppercase font-bold text-emerald-400 block mb-0.5">
+                    Healthy Stock
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-base">
+                      {healthyStockProducts.length}
+                    </span>
+                    <span className="text-[10px] text-emerald-400/80">&gt; {currentLowStockThreshold}</span>
+                  </div>
+                </button>
+
+                <div className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-900/60 border border-stone-200 dark:border-stone-800 flex flex-col justify-between">
+                  <span className="text-stone-500 dark:text-stone-400 text-[10px] uppercase font-bold block mb-0.5">
+                    Hidden from Menu
+                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-base">
+                      {products.filter((p) => p.isEnabled === false).length}
+                    </span>
+                    <span className="text-[10px] text-stone-400">Disabled</span>
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {/* Filter & Search Bar */}
+              <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between pt-3 border-t border-stone-200 dark:border-stone-800">
+                {/* Search */}
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    value={productSearchQuery}
+                    onChange={(e) => setProductSearchQuery(e.target.value)}
+                    placeholder="Search sweets by English or বাংলা name..."
+                    className={`w-full pl-9 pr-3 py-2 rounded-xl border text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                      isDark
+                        ? 'bg-stone-900 border-stone-800 text-stone-100 placeholder-stone-500'
+                        : 'bg-stone-50 border-stone-300 text-stone-900'
+                    }`}
+                  />
+                  {productSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setProductSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-200 p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Combined Stock & Category Filter Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1 md:pb-0">
+                  {/* Stock Filter Pills */}
+                  <div className="flex items-center gap-1 pr-2 border-r border-stone-300 dark:border-stone-700">
+                    <button
+                      type="button"
+                      onClick={() => setStockFilter('all')}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                        stockFilter === 'all'
+                          ? 'bg-stone-800 text-white font-bold'
+                          : 'bg-stone-100 dark:bg-stone-900 text-stone-400 hover:text-stone-200'
+                      }`}
+                    >
+                      All Stock
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStockFilter('low_stock')}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1 transition-all ${
+                        stockFilter === 'low_stock'
+                          ? 'bg-amber-500 text-stone-950 shadow-sm'
+                          : 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+                      }`}
+                    >
+                      <AlertTriangle className="w-3 h-3" />
+                      <span>Low Stock ({lowStockProducts.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStockFilter('out_of_stock')}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                        stockFilter === 'out_of_stock'
+                          ? 'bg-red-600 text-white shadow-sm'
+                          : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
+                      }`}
+                    >
+                      Out of Stock ({outOfStockProducts.length})
+                    </button>
+                  </div>
+
+                  {/* Category Pills */}
+                  {(
+                    [
+                      { id: 'all', label: 'All Categories' },
+                      { id: 'sweet', label: 'Sweets (মিষ্টি)' },
+                      { id: 'snack', label: 'Snacks (নাস্তা)' },
+                      { id: 'dairy', label: 'Dairy (দই/ক্ষীর)' },
+                      { id: 'special', label: 'Special' }
+                    ] as const
+                  ).map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setSelectedProductCategory(cat.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                        selectedProductCategory === cat.id
+                          ? 'bg-amber-500 text-stone-950 font-bold shadow-sm'
+                          : 'bg-stone-100 dark:bg-stone-900 text-stone-600 dark:text-stone-400 hover:text-amber-400 border border-stone-200 dark:border-stone-800'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
+
+            {/* Products Grid */}
+            {(() => {
+              const filtered = products.filter((p) => {
+                if (selectedProductCategory !== 'all' && p.category !== selectedProductCategory) {
+                  return false;
+                }
+                if (productSearchQuery.trim()) {
+                  const q = productSearchQuery.toLowerCase().trim();
+                  const matchEn = p.nameEn.toLowerCase().includes(q);
+                  const matchBn = p.nameBn.toLowerCase().includes(q);
+                  const matchCat = p.category.toLowerCase().includes(q);
+                  if (!matchEn && !matchBn && !matchCat) return false;
+                }
+                return true;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="p-8 text-center rounded-2xl border border-stone-800 bg-[#180E08] text-stone-400 text-xs space-y-2">
+                    <Package className="w-8 h-8 mx-auto text-amber-500 opacity-60" />
+                    <p className="font-semibold">No products match your search or filter.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductSearchQuery('');
+                        setSelectedProductCategory('all');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 text-stone-950 font-bold text-xs"
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+                  {filtered.map((p) => {
+                    const isUpdating = updatingProductId === p.id;
+                    const isOutOfStock = p.isAvailable === false;
+                    const isDisabled = p.isEnabled === false;
+
+                    return (
+                      <div
+                        key={p.id}
+                        className={`rounded-2xl border p-4 text-xs transition-all relative flex flex-col justify-between ${
+                          isDark ? 'bg-[#180E08]' : 'bg-white'
+                        } ${
+                          isDisabled
+                            ? 'border-stone-800 opacity-60'
+                            : isOutOfStock
+                            ? 'border-red-500/30'
+                            : 'border-stone-200 dark:border-stone-800 hover:border-amber-500/40'
+                        }`}
+                      >
+                        <div>
+                          {/* Top Row: Thumbnail + Names + Category */}
+                          <div className="flex gap-3 items-start mb-3">
+                            <div className="w-16 h-16 rounded-xl overflow-hidden bg-stone-900 border border-amber-500/20 flex-shrink-0 relative">
+                              {p.image ? (
+                                <img
+                                  src={p.image}
+                                  alt={p.nameEn}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-stone-600 text-[10px]">
+                                  No Img
+                                </div>
+                              )}
+                              {isOutOfStock && (
+                                <div className="absolute inset-0 bg-black/75 flex items-center justify-center text-[9px] font-bold text-red-400 text-center leading-tight p-0.5">
+                                  Out of Stock
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                  {p.category}
+                                </span>
+                                {p.isBestSeller && (
+                                  <span className="px-1.5 py-0.5 rounded-md text-[9px] bg-amber-500 text-stone-950 font-bold">
+                                    ★ Best
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="font-bold text-stone-900 dark:text-stone-100 text-sm truncate">
+                                {p.nameEn}
+                              </h3>
+                              <p className="text-[11px] text-amber-500 font-bengali truncate">
+                                {p.nameBn}
+                              </p>
+                              <span className="text-[10px] text-stone-400 block mt-0.5">
+                                {p.portionEn}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Price Stepper Row */}
+                          <div className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-900/70 border border-stone-200 dark:border-stone-800/80 mb-3 flex items-center justify-between">
+                            <span className="text-[11px] text-stone-400 font-medium">Price:</span>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={isUpdating}
+                                onClick={() => handleQuickPriceChange(p, -1)}
+                                className="w-7 h-7 rounded-lg bg-stone-200 dark:bg-stone-800 hover:bg-amber-500 hover:text-stone-950 font-bold flex items-center justify-center transition-colors active:scale-95 disabled:opacity-50"
+                                title="Decrease ₹1"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+
+                              <span className="font-mono font-bold text-amber-500 text-sm px-2">
+                                ₹{p.price}
+                              </span>
+
+                              <button
+                                type="button"
+                                disabled={isUpdating}
+                                onClick={() => handleQuickPriceChange(p, 1)}
+                                className="w-7 h-7 rounded-lg bg-stone-200 dark:bg-stone-800 hover:bg-amber-500 hover:text-stone-950 font-bold flex items-center justify-center transition-colors active:scale-95 disabled:opacity-50"
+                                title="Increase ₹1"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Availability & Visibility Toggles */}
+                          <div className="grid grid-cols-2 gap-1.5 mb-3">
+                            {/* Stock Availability Toggle */}
+                            <button
+                              type="button"
+                              disabled={isUpdating}
+                              onClick={() => handleToggleProductAvailability(p)}
+                              className={`py-1.5 px-2 rounded-xl text-[10px] font-bold border transition-all flex items-center justify-center gap-1 ${
+                                !isOutOfStock
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                                  : 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
+                              }`}
+                              title={
+                                !isOutOfStock
+                                  ? 'Click to mark Out of Stock'
+                                  : 'Click to mark Available'
+                              }
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  !isOutOfStock ? 'bg-emerald-400' : 'bg-red-500'
+                                }`}
+                              />
+                              <span>{!isOutOfStock ? 'Available' : 'Out of Stock'}</span>
+                            </button>
+
+                            {/* Enable/Disable Toggle */}
+                            <button
+                              type="button"
+                              disabled={isUpdating}
+                              onClick={() => handleToggleProductEnabled(p)}
+                              className={`py-1.5 px-2 rounded-xl text-[10px] font-bold border transition-all flex items-center justify-center gap-1 ${
+                                !isDisabled
+                                  ? 'bg-stone-100 dark:bg-stone-900 text-stone-300 border-stone-700 hover:border-amber-500'
+                                  : 'bg-amber-950/20 text-stone-500 border-stone-800'
+                              }`}
+                              title={
+                                !isDisabled
+                                  ? 'Click to hide from customer menu'
+                                  : 'Click to show on customer menu'
+                              }
+                            >
+                              {!isDisabled ? (
+                                <>
+                                  <Eye className="w-3 h-3 text-amber-400" />
+                                  <span>Enabled</span>
+                                </>
+                              ) : (
+                                <>
+                                  <EyeOff className="w-3 h-3 text-stone-500" />
+                                  <span>Hidden</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Edit Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingProduct(p);
+                            setIsEditProductModalOpen(true);
+                          }}
+                          className="w-full py-2 px-3 rounded-xl border border-amber-500/40 text-amber-400 hover:bg-amber-500 hover:text-stone-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit Product Details</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1313,6 +2049,9 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
               </div>
             </div>
 
+            {/* D3 & Recharts Visualizations: Daily Revenue Trends & Most Popular Sweet Items */}
+            <OwnerSalesCharts orders={orders} isDark={isDark} />
+
             {/* Orders Statistics */}
             <div
               className={`p-5 rounded-2xl border ${
@@ -1348,52 +2087,196 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
 
         {/* Tab 8: Notification Status */}
         {activeTab === 'notifications' && (
-          <div
-            className={`rounded-2xl border p-5 sm:p-6 max-w-2xl mx-auto shadow-sm ${
-              isDark ? 'bg-[#180E08] border-stone-800' : 'bg-white border-stone-200'
-            }`}
-          >
-            <h2 className="text-base font-bold font-serif mb-4 flex items-center gap-2">
-              <Bell className="w-5 h-5 text-amber-500" />
-              <span>Firebase Cloud Messaging & Push Notifications</span>
-            </h2>
-
-            <div className="space-y-4 text-xs">
-              <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-900/60 flex items-center justify-between">
-                <div>
-                  <span className="font-semibold block">Browser Push Permission</span>
-                  <span className="text-stone-500 capitalize">{notificationPermission}</span>
+          <div className="space-y-6 max-w-3xl mx-auto">
+            {/* Telegram Notification System (Primary) */}
+            <div
+              className={`rounded-2xl border p-5 sm:p-6 shadow-sm ${
+                isDark ? 'bg-[#180E08] border-sky-500/30' : 'bg-white border-sky-200'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-sky-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                    <Send className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold font-serif flex items-center gap-2">
+                      <span>Telegram Order Notification System</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                        ACTIVE
+                      </span>
+                    </h2>
+                    <p className="text-xs text-stone-400">
+                      Every customer order automatically sends an instant notification to your Telegram
+                    </p>
+                  </div>
                 </div>
-                {notificationPermission !== 'granted' && (
-                  <button
-                    onClick={handleEnableNotifications}
-                    className="px-3 py-1.5 rounded-lg bg-amber-500 text-stone-950 font-bold"
-                  >
-                    Grant Permission
-                  </button>
-                )}
-              </div>
 
-              <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-900/60 flex items-center justify-between">
-                <div>
-                  <span className="font-semibold block">Sound Chime on New Orders</span>
-                  <span className="text-stone-500">
-                    {isSoundMuted ? 'Muted' : 'Active (plays triple bell chime on order arrival)'}
-                  </span>
-                </div>
-                <button
-                  onClick={() => playOrderAlertSound()}
-                  className="px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-500 hover:bg-amber-500/10 font-bold"
+                <a
+                  href="https://t.me/r5yyy5z"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-stone-950 font-bold text-xs flex items-center gap-1.5 transition-all self-start sm:self-auto shadow-md"
                 >
-                  Test Sound
-                </button>
+                  <span>Open @r5yyy5z</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
               </div>
 
-              <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-900/60">
-                <span className="font-semibold block mb-1">Registered Device FCM Token:</span>
-                <p className="font-mono text-[10px] break-all text-stone-500">
-                  {fcmToken || 'No token generated yet. Click "Grant Permission" above to register.'}
-                </p>
+              {/* Notification Details & Actions */}
+              <div className="space-y-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-900/60 border border-stone-200 dark:border-stone-800">
+                    <span className="font-semibold text-stone-400 block mb-0.5">Target Telegram Account:</span>
+                    <a
+                      href="https://t.me/r5yyy5z"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono font-bold text-sky-400 hover:underline flex items-center gap-1"
+                    >
+                      <span>https://t.me/r5yyy5z</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <span className="text-[11px] text-stone-500 block mt-1">Username: @r5yyy5z</span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-900/60 border border-stone-200 dark:border-stone-800">
+                    <span className="font-semibold text-stone-400 block mb-0.5">Notification Automation:</span>
+                    <span className="font-semibold text-emerald-400 flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Instant Alert on Every New Order</span>
+                    </span>
+                    <span className="text-[11px] text-stone-500 block mt-1">
+                      Includes customer name, phone, full item breakdown, address, and timestamp
+                    </span>
+                  </div>
+                </div>
+
+                {/* Test Notification Trigger */}
+                <div className="p-3.5 rounded-xl bg-sky-500/10 border border-sky-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="font-bold text-stone-200 block">Test Telegram Alert</span>
+                    <span className="text-[11px] text-stone-400">
+                      Send a sample order notification to verify connection with https://t.me/r5yyy5z
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isTestingTelegram}
+                    onClick={handleTestTelegramAlert}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 text-stone-950 font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
+                  >
+                    {isTestingTelegram ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    <span>{isTestingTelegram ? 'Preparing Alert...' : 'Send Test Alert to @r5yyy5z'}</span>
+                  </button>
+                </div>
+
+                {telegramTestFeedback && (
+                  <div className="p-3 rounded-xl bg-stone-900 border border-sky-500/40 text-sky-300 text-xs">
+                    {telegramTestFeedback}
+                  </div>
+                )}
+
+                {/* Recent Telegram Notification History Log */}
+                <div className="mt-4 pt-3 border-t border-stone-200 dark:border-stone-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-stone-300">Recent Telegram Order Dispatches</span>
+                    <span className="text-[11px] text-stone-500 font-mono">Target: @r5yyy5z</span>
+                  </div>
+
+                  {telegramStatus?.recentNotifications && telegramStatus.recentNotifications.length > 0 ? (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {telegramStatus.recentNotifications.map((n) => (
+                        <div
+                          key={n.id}
+                          className="p-2.5 rounded-xl bg-stone-100 dark:bg-stone-900/60 border border-stone-200 dark:border-stone-800 flex items-center justify-between gap-2 text-[11px]"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-mono font-bold text-amber-400 block truncate">
+                              Order #{n.orderId} • {n.customerName} (₹{n.totalAmount})
+                            </span>
+                            <span className="text-stone-500 block truncate">{n.detail}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="font-mono text-stone-400 text-[10px]">
+                              {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {n.directUrl && (
+                              <a
+                                href={n.directUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 text-sky-400 hover:text-sky-300"
+                                title="Open in Telegram"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-stone-100 dark:bg-stone-900/40 text-center text-stone-500 text-xs">
+                      No orders dispatched during this session yet. Place any order to see real-time Telegram alerts here!
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Browser Push & Sound Chime Notifications */}
+            <div
+              className={`rounded-2xl border p-5 sm:p-6 shadow-sm ${
+                isDark ? 'bg-[#180E08] border-stone-800' : 'bg-white border-stone-200'
+              }`}
+            >
+              <h2 className="text-base font-bold font-serif mb-4 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-amber-500" />
+                <span>Browser Push Notifications & Sound Chime</span>
+              </h2>
+
+              <div className="space-y-4 text-xs">
+                <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-900/60 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold block">Browser Push Permission</span>
+                    <span className="text-stone-500 capitalize">{notificationPermission}</span>
+                  </div>
+                  {notificationPermission !== 'granted' && (
+                    <button
+                      onClick={handleEnableNotifications}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 text-stone-950 font-bold"
+                    >
+                      Grant Permission
+                    </button>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-900/60 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold block">Sound Chime on New Orders</span>
+                    <span className="text-stone-500">
+                      {isSoundMuted ? 'Muted' : 'Active (plays triple bell chime on order arrival)'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => playOrderAlertSound()}
+                    className="px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-500 hover:bg-amber-500/10 font-bold"
+                  >
+                    Test Sound
+                  </button>
+                </div>
+
+                <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-900/60">
+                  <span className="font-semibold block mb-1">Registered Device FCM Token:</span>
+                  <p className="font-mono text-[10px] break-all text-stone-500">
+                    {fcmToken || 'No token generated yet. Click "Grant Permission" above to register.'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -1547,6 +2430,84 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
                 </div>
               </div>
 
+              {/* Telegram Order Notification Configuration */}
+              <div className="p-3.5 rounded-xl border border-sky-500/30 bg-sky-500/5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sky-400 font-bold">
+                    <Send className="w-4 h-4" />
+                    <span>Telegram Order Notifications</span>
+                  </div>
+                  <a
+                    href="https://t.me/r5yyy5z"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-sky-400 hover:underline flex items-center gap-1"
+                  >
+                    <span>@r5yyy5z</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+
+                <div>
+                  <label className="block text-stone-500 mb-1">Telegram Account Link</label>
+                  <input
+                    type="text"
+                    value={editableSettings.telegramAccountLink || 'https://t.me/r5yyy5z'}
+                    onChange={(e) =>
+                      setEditableSettings({
+                        ...editableSettings,
+                        telegramAccountLink: e.target.value
+                      })
+                    }
+                    placeholder="https://t.me/r5yyy5z"
+                    className={`w-full p-2.5 rounded-xl border font-mono text-xs ${
+                      isDark ? 'bg-stone-900 border-stone-800' : 'bg-white border-stone-300'
+                    }`}
+                  />
+                  <span className="text-[10px] text-stone-500 mt-0.5 block">
+                    Every incoming order will automatically alert this Telegram account.
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-stone-500 mb-1">Telegram Chat / Username</label>
+                    <input
+                      type="text"
+                      value={editableSettings.telegramChatId || 'r5yyy5z'}
+                      onChange={(e) =>
+                        setEditableSettings({
+                          ...editableSettings,
+                          telegramChatId: e.target.value
+                        })
+                      }
+                      placeholder="r5yyy5z"
+                      className={`w-full p-2.5 rounded-xl border font-mono text-xs ${
+                        isDark ? 'bg-stone-900 border-stone-800' : 'bg-white border-stone-300'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-stone-500 mb-1">Bot Token (Optional for direct push)</label>
+                    <input
+                      type="password"
+                      value={editableSettings.telegramBotToken || ''}
+                      onChange={(e) =>
+                        setEditableSettings({
+                          ...editableSettings,
+                          telegramBotToken: e.target.value
+                        })
+                      }
+                      placeholder="Optional Telegram Bot Token"
+                      className={`w-full p-2.5 rounded-xl border font-mono text-xs ${
+                        isDark ? 'bg-stone-900 border-stone-800' : 'bg-white border-stone-300'
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 font-bold text-xs shadow-md hover:shadow-amber-500/20"
@@ -1574,12 +2535,13 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
           >
             <div className="absolute top-4 right-4 flex items-center gap-2">
               <button
-                onClick={() => window.print()}
-                className="p-1.5 rounded-lg border border-amber-500/30 text-amber-500 hover:bg-amber-500/10 flex items-center gap-1 text-xs font-semibold"
-                title="Print Order Invoice"
+                type="button"
+                onClick={() => setInvoiceModalOrder(selectedOrder)}
+                className="p-1.5 rounded-lg border border-amber-500/40 text-amber-500 hover:bg-amber-500/10 flex items-center gap-1.5 text-xs font-semibold cursor-pointer shadow-sm"
+                title="View & Print Structured Tax Invoice"
               >
                 <Printer className="w-4 h-4" />
-                <span className="hidden sm:inline">Print Invoice</span>
+                <span className="hidden sm:inline">Tax Invoice</span>
               </button>
               <button
                 onClick={() => setSelectedOrder(null)}
@@ -1661,6 +2623,52 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
               <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs">
                 <span className="font-bold text-amber-500 block mb-0.5">Customer Order Note:</span>
                 <p className="italic">"{selectedOrder.customerNote}"</p>
+              </div>
+            )}
+
+            {/* Customer Post-Order Feedback */}
+            {selectedOrder.feedback && (
+              <div className="mb-4 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-500 uppercase text-[10px] flex items-center gap-1.5">
+                    <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                    Customer Post-Order Feedback
+                  </span>
+                  <div className="flex items-center text-amber-400">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star
+                        key={s}
+                        className={`w-3.5 h-3.5 ${
+                          s <= selectedOrder.feedback!.rating
+                            ? 'fill-amber-400 text-amber-400'
+                            : 'text-stone-600'
+                        }`}
+                      />
+                    ))}
+                    <span className="ml-1.5 font-bold font-mono text-amber-400">
+                      ({selectedOrder.feedback.rating}/5)
+                    </span>
+                  </div>
+                </div>
+
+                {selectedOrder.feedback.tags && selectedOrder.feedback.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {selectedOrder.feedback.tags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-semibold"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {selectedOrder.feedback.comment && (
+                  <p className="italic text-stone-200 pt-1">
+                    "{selectedOrder.feedback.comment}"
+                  </p>
+                )}
               </div>
             )}
 
@@ -1769,6 +2777,21 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
                   Delivered
                 </button>
               </div>
+
+              {/* Telegram Notification Direct Action */}
+              <div className="pt-2">
+                <a
+                  href={getDirectTelegramOrderLink(selectedOrder)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-3 rounded-xl text-xs font-bold border border-sky-500/40 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                  title="Open notification in Telegram"
+                >
+                  <Send className="w-4 h-4 text-sky-400" />
+                  <span>Send / Open Notification in Telegram (@r5yyy5z)</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -1825,6 +2848,28 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ onLogout, onOpen
           </div>
         </div>
       )}
+
+      {/* Edit Product Modal (Real-time Firestore) */}
+      <EditProductModal
+        product={editingProduct}
+        isOpen={isEditProductModalOpen}
+        onClose={() => {
+          setIsEditProductModalOpen(false);
+          setEditingProduct(null);
+        }}
+        onSaved={(updated) => {
+          showProductFeedback(`Product "${updated.nameEn}" successfully saved to Firestore!`);
+        }}
+      />
+
+      {/* Structured Tax Invoice Modal */}
+      <InvoiceModal
+        order={invoiceModalOrder}
+        isOpen={!!invoiceModalOrder}
+        onClose={() => setInvoiceModalOrder(null)}
+        language={language}
+        theme={theme}
+      />
     </div>
   );
 };

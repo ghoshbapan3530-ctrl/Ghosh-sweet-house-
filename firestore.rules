@@ -2,24 +2,27 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Default deny all unknown collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
     // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Owner authorization: checks authenticated user email against owner allowlist
-    // or checks custom claim / owner document or authenticated management session
+    // Secure owner authorization:
+    // Only the primary verified store owner email or explicit document in owner_roles
     function isOwner() {
       return isAuthenticated() && (
         request.auth.token.email == 'ghoshbapan3530@gmail.com' ||
         request.auth.token.email.matches('.*@ghoshsweet\\.com') ||
-        request.auth.token.firebase.sign_in_provider == 'anonymous' ||
-        (request.auth.token.keys().hasAll(['admin']) && request.auth.token.admin == true) ||
         exists(/databases/$(database)/documents/owner_roles/$(request.auth.uid))
       );
     }
 
-    // Customer identity check: matches customerId
+    // Customer identity check: matches customer UID
     function isCustomerOwner(customerId) {
       return isAuthenticated() && request.auth.uid == customerId;
     }
@@ -39,34 +42,63 @@ service cloud.firestore {
     // ===============================================================
     match /orders/{orderId} {
       // 1. READ:
-      // - Owner can list & read any order
-      // - Authenticated customer can read their own order
-      // - Unauthenticated customer can read their specific single order for live tracking
+      // - Authorized owner can list & read all orders
+      // - Authenticated customer can read only their own orders (no cross-customer reading)
+      // - Single document get allowed for customer's own order or active orderId session
+      // - Never exposed publicly for blanket listing
       allow get: if isOwner() ||
-                    (isAuthenticated() && resource.data.customerId == request.auth.uid) ||
+                    (isAuthenticated() && (
+                      resource.data.customerId == request.auth.uid ||
+                      (resource.data.keys().hasAll(['customerUid']) && resource.data.customerUid == request.auth.uid)
+                    )) ||
                     (!isAuthenticated() && resource.data.orderId == orderId);
 
       allow list: if isOwner() ||
-                     (isAuthenticated() && resource.data.customerId == request.auth.uid);
+                     (isAuthenticated() && (
+                       resource.data.customerId == request.auth.uid ||
+                       (resource.data.keys().hasAll(['customerUid']) && resource.data.customerUid == request.auth.uid)
+                     ));
 
       // 2. CREATE:
-      // Customers can place a new order. Must start with status 'PENDING'
-      allow create: if request.resource.data.status == 'PENDING' &&
-                       isValidString(request.resource.data.customerName, 2, 100) &&
-                       isValidPhone(request.resource.data.phone) &&
-                       request.resource.data.totalAmount is number &&
-                       request.resource.data.totalAmount > 0 &&
-                       request.resource.data.items is list &&
-                       request.resource.data.items.size() > 0 &&
-                       request.resource.data.items.size() <= 50;
+      // Customers can place a new order. Must start with status 'PENDING'.
+      // Online payments cannot be self-marked as paid without server verification.
+      allow create: if (
+                        (isAuthenticated() && (
+                          request.resource.data.customerId == request.auth.uid ||
+                          (request.resource.data.keys().hasAll(['customerUid']) && request.resource.data.customerUid == request.auth.uid)
+                        )) ||
+                        (!isAuthenticated() && request.resource.data.customerId is string && request.resource.data.customerId.size() <= 128)
+                      ) &&
+                      request.resource.data.status == 'PENDING' &&
+                      (request.resource.data.paymentMethod != 'online' || request.resource.data.paymentStatus == 'pending') &&
+                      isValidString(request.resource.data.customerName, 2, 100) &&
+                      isValidPhone(request.resource.data.phone) &&
+                      request.resource.data.totalAmount is number &&
+                      request.resource.data.totalAmount > 0 &&
+                      request.resource.data.items is list &&
+                      request.resource.data.items.size() > 0 &&
+                      request.resource.data.items.size() <= 50;
 
       // 3. UPDATE:
-      // Only authorized owner can update order status and management fields
-      allow update: if isOwner();
+      // A. Authorized owner can accept, reject, and update order status (prices strictly immutable).
+      // B. Customers can submit feedback once delivered/completed (prices, items, and status strictly immutable).
+      allow update: if (
+        isOwner() &&
+        request.resource.data.items == resource.data.items &&
+        request.resource.data.subtotal == resource.data.subtotal &&
+        request.resource.data.totalAmount == resource.data.totalAmount &&
+        request.resource.data.deliveryCharge == resource.data.deliveryCharge
+      ) || (
+        isAuthenticated() &&
+        (resource.data.customerId == request.auth.uid ||
+         (resource.data.keys().hasAll(['customerUid']) && resource.data.customerUid == request.auth.uid)) &&
+        resource.data.status in ['DELIVERED', 'READY', 'COMPLETED'] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feedback', 'updatedAt'])
+      );
 
       // 4. DELETE:
-      // Deletions forbidden or owner-only
-      allow delete: if isOwner();
+      // Orders must never be deleted to preserve financial audit trails and historical records.
+      allow delete: if false;
     }
 
     // ===============================================================
@@ -75,8 +107,7 @@ service cloud.firestore {
     match /customers/{customerId} {
       allow get: if isOwner() || isCustomerOwner(customerId);
       allow list: if isOwner();
-      allow create: if isAuthenticated() && (request.auth.uid == customerId || isOwner());
-      allow update: if isOwner() || isCustomerOwner(customerId);
+      allow create, update: if isCustomerOwner(customerId) || isOwner() || !isAuthenticated();
       allow delete: if isOwner();
     }
 
@@ -84,27 +115,46 @@ service cloud.firestore {
     // OWNER SETTINGS COLLECTION
     // ===============================================================
     match /owner_settings/{settingsId} {
-      // Public can read general store delivery settings (e.g. min order, delivery charge)
+      // Store delivery rules and thresholds are readable by storefront
       allow get, list: if true;
-      // Only authorized owner can modify settings
+      // Only authorized owner can modify operational settings
       allow write: if isOwner();
     }
 
     // ===============================================================
-    // PRODUCTS COLLECTION (Optional cloud sync)
+    // PRODUCTS COLLECTION
     // ===============================================================
     match /products/{productId} {
+      // Public can view products
       allow get, list: if true;
-      allow write: if isOwner();
+      // Only authorized owner can create or update products
+      allow create, update: if isOwner();
+      // Physical deletion disabled (soft-delete via isEnabled = false)
+      allow delete: if false;
     }
 
     // ===============================================================
-    // OWNER ROLES & TOKENS
+    // OWNER ROLES: Privileged collection - strictly locked from client mutation
     // ===============================================================
     match /owner_roles/{userId} {
-      allow read, write: if isOwner();
+      allow read: if isOwner();
+      // Customers CANNOT set their own owner/admin permissions. Client writes forbidden.
+      allow write: if false;
     }
 
+    // ===============================================================
+    // REVIEWS COLLECTION
+    // ===============================================================
+    match /reviews/{reviewId} {
+      allow get, list: if true;
+      allow create: if true;
+      allow update: if isAuthenticated();
+      allow delete: if isOwner();
+    }
+
+    // ===============================================================
+    // NOTIFICATION LOGS
+    // ===============================================================
     match /notification_logs/{logId} {
       allow read, write: if isOwner();
     }

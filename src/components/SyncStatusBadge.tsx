@@ -68,7 +68,7 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({
   return (
     <div className="inline-flex items-center gap-1.5 flex-wrap">
       <span
-        title={`Google Sheets: ${label}`}
+        title={`Cloud Sync: ${label}`}
         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${cfg.pillClass}`}
       >
         <span className="text-xs leading-none" role="img" aria-label={cfg.labelEn}>
@@ -83,7 +83,7 @@ export const SyncStatusBadge: React.FC<SyncStatusBadgeProps> = ({
           type="button"
           onClick={handleRetry}
           disabled={retrying}
-          title={language === 'bn' ? 'পুনরায় শিটসে সিঙ্ক করুন' : 'Retry Google Sheets Sync'}
+          title={language === 'bn' ? 'পুনরায় ক্লাউডে সিঙ্ক করুন' : 'Retry Cloud Sync'}
           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] font-medium transition-all ${
             status === 'failed'
               ? 'bg-rose-500/15 border-rose-500/40 text-rose-300 hover:bg-rose-500/25 active:scale-95'

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useShop } from '../context/ShopContext';
-import { ShoppingBag, BookOpen, Phone, CheckCircle2, Sparkles, Award, Crown, Download, X, Smartphone, Gift, ArrowRight } from 'lucide-react';
+import { ShoppingBag, BookOpen, Phone, CheckCircle2, Sparkles, Award, Crown, Download, X, Smartphone, Gift, ArrowRight, Box } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
+import { Hero3DShowcase } from './3d/Hero3DShowcase';
 
 export const Hero: React.FC = () => {
   const {
@@ -14,7 +15,8 @@ export const Hero: React.FC = () => {
     currentCustomer,
     setIsDashboardOpen,
     sweetPoints,
-    pointsToRupees
+    pointsToRupees,
+    open3DViewer
   } = useShop();
   const [showInstallModal, setShowInstallModal] = useState(false);
   const isDark = theme === 'dark';
@@ -159,6 +161,19 @@ export const Hero: React.FC = () => {
                 </span>
               </a>
 
+              {/* Interactive 3D Model Studio Quick Button */}
+              <button
+                type="button"
+                onClick={() => open3DViewer('rasgulla')}
+                id="hero-3d-studio-cta"
+                className="flex items-center justify-center gap-2 px-5 sm:px-6 py-3.5 rounded-full font-bold text-sm sm:text-base border border-amber-400 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 transition-all shadow-lg shadow-amber-500/10 active:scale-95 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                <span className="font-bengali">
+                  {language === 'bn' ? '৩৬০° ৩ডি মিষ্টি দেখুন' : 'Explore 3D Sweets'}
+                </span>
+              </button>
+
               {/* Order Now Button */}
               <button
                 type="button"
@@ -220,75 +235,9 @@ export const Hero: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column: Royal Heritage Insignia Plaque (100% Vector & Typography) */}
-          <div className="lg:col-span-5 relative flex justify-center items-center">
-            {/* Glowing Golden Ring Frame */}
-            <div className="relative w-full max-w-[440px] rounded-3xl p-6 bg-gradient-to-br from-[#241710] via-[#1A0E08] to-[#120904] border-2 border-amber-500/40 shadow-2xl backdrop-blur-md text-center">
-              
-              {/* Golden Ornamental Top Header */}
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <Crown className="w-6 h-6 text-amber-400" />
-                <span className="text-xs uppercase font-royal font-bold tracking-widest text-amber-300">
-                  HERITAGE CONFECTIONERY
-                </span>
-                <Crown className="w-6 h-6 text-amber-400" />
-              </div>
-
-              {/* Central Seal Calligraphy */}
-              <div className="w-28 h-28 mx-auto rounded-full bg-gradient-to-tr from-amber-600/30 via-amber-400/20 to-amber-500/40 border-2 border-amber-400/60 flex flex-col items-center justify-center shadow-lg mb-4">
-                <span className="text-3xl font-bold font-bengali text-amber-300 tracking-wide">
-                  ঘোষ
-                </span>
-                <span className="text-[10px] font-bold text-amber-400/90 tracking-widest font-royal mt-0.5">
-                  ESTD • MALDA
-                </span>
-              </div>
-
-              {/* Brand Title */}
-              <h3 className="text-2xl sm:text-3xl font-extrabold font-bengali text-amber-200 mb-1 leading-snug">
-                ঘোষ মিষ্টান্ন ভাণ্ডার
-              </h3>
-              <p className="text-xs font-serif-luxury text-amber-400/90 tracking-wider mb-4">
-                GHOSH SWEET HOUSE • DUISATABIGHI
-              </p>
-
-              {/* Quality Pillars */}
-              <div className="space-y-2 py-3 border-y border-amber-500/20 text-left mb-4">
-                <div className="flex items-center gap-2.5 text-xs text-stone-300">
-                  <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                  <span className="font-bengali">১০০% খাঁটি দেশি গরুর দুধের ছানা ও টাটকা উপাদান</span>
-                </div>
-                <div className="flex items-center gap-2.5 text-xs text-stone-300">
-                  <Award className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                  <span className="font-bengali">সকালের তাজা স্পঞ্জ রসগোল্লা, চমচম ও খাঁটি দই</span>
-                </div>
-                <div className="flex items-center gap-2.5 text-xs text-stone-300">
-                  <CheckCircle2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                  <span className="font-bengali">বিবাহ, শুভ অন্নপ্রাশন ও উৎসবের স্পেশাল মিষ্টি বক্স</span>
-                </div>
-              </div>
-
-              {/* Address Footer */}
-              <div className="flex items-center justify-between text-[11px] text-amber-400/80 pt-1">
-                <span>📍 দুইসাটাবিঘি, কালিয়াচক, মালদা</span>
-                <span className="font-bold text-emerald-400 flex items-center gap-1">
-                  ● খোলা রয়েছে
-                </span>
-              </div>
-
-              {/* Decorative Floating Sweet Mini Badge Bottom Right */}
-              <div className="absolute -bottom-4 -right-3 sm:-right-4 bg-gradient-to-r from-amber-600 to-amber-500 text-stone-950 px-3.5 py-2 rounded-xl shadow-xl border border-amber-300 flex items-center gap-2">
-                <span className="text-base">🍬</span>
-                <div className="text-left">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-stone-900 leading-none">
-                    {language === 'bn' ? 'খাঁটি বাঙালি স্বাদ' : '100% PURE CHANA'}
-                  </div>
-                  <div className="text-xs font-extrabold font-bengali leading-tight">
-                    {language === 'bn' ? 'সেরা মিষ্টির ঠিকানা' : 'Malda Famous'}
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* Right Column: Interactive 3D Sweets Showcase Stage */}
+          <div className="lg:col-span-5 relative flex justify-center items-center z-10">
+            <Hero3DShowcase onOpen3DStudio={(type) => open3DViewer(type)} />
           </div>
 
         </div>

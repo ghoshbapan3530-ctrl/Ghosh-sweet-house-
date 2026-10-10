@@ -86,7 +86,7 @@ export const ContactSection: React.FC = () => {
                     </a>
                     <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{language === 'bn' ? 'সরাসরি গুগল শিটসে অর্ডার নথিবদ্ধ' : 'Orders Directly Sent to Google Sheets'}</span>
+                      <span>{language === 'bn' ? 'সরাসরি লাইভ ক্লাউড ও স্টোরে অর্ডার নথিবদ্ধ' : 'Orders Directly Confirmed in Cloud'}</span>
                     </span>
                   </div>
                 </div>

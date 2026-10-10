@@ -6,13 +6,15 @@ import { NutritionTooltip } from './NutritionTooltip';
 import { ScrollReveal } from './ScrollReveal';
 
 export const BestSellers: React.FC = () => {
-  const { language, theme, products, addToCart, t } = useShop();
+  const { language, theme, products, addToCart, t, open3DViewer } = useShop();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isDark = theme === 'dark';
 
   // The requested signature best sellers
   const bestSellerIds = ['small-rosogolla', 'big-rosogolla', 'golapjamun', 'lal-rosogolla', 'rosogodam', 'laddu', 'chamcham'];
-  const bestSellerProducts = products.filter(p => bestSellerIds.includes(p.id));
+  const bestSellerProducts = products.filter(
+    (p) => bestSellerIds.includes(p.id) && p.isEnabled !== false
+  );
 
   const handleScroll = (direction: 'left' | 'right') => {
     if (scrollContainerRef.current) {
@@ -100,10 +102,24 @@ export const BestSellers: React.FC = () => {
                 <div>
                   {/* Header Badge & Portion Row (Image-free Clean Design) */}
                   <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold shadow-sm">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span>{language === 'bn' ? (item.badgeBn || 'জনপ্রিয়') : (item.badgeEn || 'Best Seller')}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold shadow-sm">
+                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                        <span>{language === 'bn' ? (item.badgeBn || 'জনপ্রিয়') : (item.badgeEn || 'Best Seller')}</span>
+                      </div>
+
+                      {/* 3D Model Button */}
+                      <button
+                        type="button"
+                        onClick={() => open3DViewer(undefined, item)}
+                        className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm"
+                        title={language === 'bn' ? '৩৬০° ৩ডি মডেলে দেখুন' : 'View in 3D'}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                        <span>{language === 'bn' ? '৩ডি' : '3D'}</span>
+                      </button>
                     </div>
+
                     <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-stone-900/60 border border-amber-500/25 text-amber-300">
                       {language === 'bn' ? item.portionBn : item.portionEn}
                     </span>
@@ -153,15 +169,26 @@ export const BestSellers: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => addToCart(item)}
-                    id={`bestseller-order-${item.id}`}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow-md active:scale-95 transition-all"
-                  >
-                    <ShoppingBag className="w-3.5 h-3.5" />
-                    <span>{t.addToCart}</span>
-                  </button>
+                  {item.isAvailable === false ? (
+                    <button
+                      type="button"
+                      disabled
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-stone-800 text-stone-400 border border-stone-700/60 cursor-not-allowed opacity-90"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-red-500" />
+                      <span>{language === 'bn' ? 'স্টক শেষ' : 'Out of Stock'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => addToCart(item)}
+                      id={`bestseller-order-${item.id}`}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow-md active:scale-95 transition-all"
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5" />
+                      <span>{t.addToCart}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

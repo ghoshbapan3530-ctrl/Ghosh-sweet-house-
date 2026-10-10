@@ -5,11 +5,15 @@ import { NutritionTooltip } from './NutritionTooltip';
 import { ScrollReveal } from './ScrollReveal';
 
 export const SpecialCollection: React.FC = () => {
-  const { language, theme, products, addToCart, t } = useShop();
+  const { language, theme, products, addToCart, t, open3DViewer } = useShop();
   const isDark = theme === 'dark';
 
-  const dairyProducts = products.filter(p => p.category === 'dairy');
-  const specialBoxes = products.filter(p => p.category === 'special');
+  const dairyProducts = products.filter(
+    (p) => p.category === 'dairy' && p.isEnabled !== false
+  );
+  const specialBoxes = products.filter(
+    (p) => p.category === 'special' && p.isEnabled !== false
+  );
 
   const specialCategories = [
     {
@@ -191,15 +195,21 @@ export const SpecialCollection: React.FC = () => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => addToCart(item)}
-                  id={`dairy-order-${item.id}`}
-                  className="p-2 rounded-xl bg-amber-500/10 hover:bg-amber-500 hover:text-stone-950 text-amber-400 border border-amber-500/30 transition-all"
-                  title={t.addToCart}
-                >
-                  <ShoppingBag className="w-4 h-4" />
-                </button>
+                {item.isAvailable === false ? (
+                  <span className="text-[10px] font-bold text-red-500 px-2 py-1 bg-red-500/10 rounded-lg border border-red-500/20">
+                    {language === 'bn' ? 'স্টক শেষ' : 'Out of Stock'}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => addToCart(item)}
+                    id={`dairy-order-${item.id}`}
+                    className="p-2 rounded-xl bg-amber-500/10 hover:bg-amber-500 hover:text-stone-950 text-amber-400 border border-amber-500/30 transition-all"
+                    title={t.addToCart}
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                  </button>
+                )}
               </div>
               </ScrollReveal>
             ))}
@@ -243,9 +253,23 @@ export const SpecialCollection: React.FC = () => {
               >
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-3">
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-stone-950 font-bold text-[10px]">
-                      {language === 'bn' ? item.badgeBn : item.badgeEn}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-stone-950 font-bold text-[10px]">
+                        {language === 'bn' ? item.badgeBn : item.badgeEn}
+                      </span>
+
+                      {/* 3D Box Inspection Button */}
+                      <button
+                        type="button"
+                        onClick={() => open3DViewer('sweet_box', item)}
+                        className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-sm"
+                        title={language === 'bn' ? '৩৬০° ৩ডি মডেলে দেখুন' : 'View in 3D'}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                        <span>{language === 'bn' ? '৩ডি' : '3D'}</span>
+                      </button>
+                    </div>
+
                     <span className="text-xs font-semibold text-amber-500">
                       {language === 'bn' ? item.portionBn : item.portionEn}
                     </span>
@@ -281,15 +305,26 @@ export const SpecialCollection: React.FC = () => {
                       />
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => addToCart(item)}
-                    id={`special-order-${item.id}`}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-500 text-stone-950 hover:bg-amber-400 transition-all shadow"
-                  >
-                    <ShoppingBag className="w-3.5 h-3.5" />
-                    <span>{t.addToCart}</span>
-                  </button>
+                  {item.isAvailable === false ? (
+                    <button
+                      type="button"
+                      disabled
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-stone-800 text-stone-400 border border-stone-700/60 cursor-not-allowed opacity-90"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-red-500" />
+                      <span>{language === 'bn' ? 'স্টক শেষ' : 'Out of Stock'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => addToCart(item)}
+                      id={`special-order-${item.id}`}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-500 text-stone-950 hover:bg-amber-400 transition-all shadow"
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5" />
+                      <span>{t.addToCart}</span>
+                    </button>
+                  )}
                 </div>
               </div>
               </ScrollReveal>
